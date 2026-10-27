@@ -1,0 +1,1990 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#e2551b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="BRS Inventering">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<title>BRS - Inventeringsapp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+/* Layout: one-screen app. Project list → full-bleed drawing with pan/zoom, bottom bar, slide-up sheets. Markers are numbered site tags. */
+:root{
+  --paper:#f6f7f5; --surface:#ffffff; --ink:#1d2321; --muted:#5f6a66; --line:#d9dedb;
+  --tag:#e2551b; --tag-ink:#ffffff; --tag-soft:#fbe6dc; --ok:#2f7d55; --danger:#b3261e;
+  --plan-bg:#e9ece9;
+  --font-ui:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#141716; --surface:#1d2120; --ink:#e8ece9; --muted:#9aa5a0; --line:#323836;
+  --tag:#ff6a2b; --tag-ink:#1a0d06; --tag-soft:#3a2219; --ok:#5fc08e; --danger:#ff8a80; --plan-bg:#0e1110; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#141716; --surface:#1d2120; --ink:#e8ece9; --muted:#9aa5a0; --line:#323836;
+  --tag:#ff6a2b; --tag-ink:#1a0d06; --tag-soft:#3a2219; --ok:#5fc08e; --danger:#ff8a80; --plan-bg:#0e1110; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-ui);font-size:16px;overflow:hidden}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible,label:focus-within{outline:2px solid var(--tag);outline-offset:2px}
+.app{height:100%;display:flex;flex-direction:column}
+.view{flex:1;min-height:0;display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:10px;padding-block:10px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  background:var(--surface);border-bottom:1px solid var(--line)}
+.bar h1{font-size:19px;font-weight:700;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;height:38px;min-width:38px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-weight:600;font-size:14px}
+.btn{border:0;border-radius:var(--r);padding:12px 16px;font-weight:600;font-size:16px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--tag);color:var(--tag-ink)}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
+.btn[disabled]{opacity:.5;cursor:default}
+.scroll{flex:1;min-height:0;overflow-y:auto;padding-block:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.eyebrow{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.note{font-size:13px;color:var(--muted);background:var(--tag-soft);border-radius:8px;padding:8px 12px;line-height:1.4}
+
+/* Projects */
+.plist{display:grid;gap:10px;margin-top:10px}
+.pcard{display:grid;grid-template-columns:72px 1fr auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px;text-align:left;width:100%}
+.pcard img,.pcard .ph{width:72px;height:56px;object-fit:cover;border-radius:6px;background:var(--plan-bg);display:block}
+.pcard b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcard small{color:var(--muted);font-size:13px}
+.pcard>div{min-width:0}
+.count{font-family:var(--font-num);font-size:13px;background:var(--tag-soft);color:var(--tag);border-radius:999px;padding:3px 9px;font-weight:600}
+.empty{margin-top:24px;border:1.5px dashed var(--line);border-radius:var(--r);padding:24px 18px;display:grid;gap:14px}
+.empty h2{margin:0;font-size:22px;text-wrap:balance}
+.steps{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.steps li{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start;color:var(--muted);line-height:1.4}
+.steps li span{width:26px;height:26px;border-radius:50%;background:var(--tag);color:var(--tag-ink);font-family:var(--font-num);font-size:13px;display:grid;place-items:center;font-weight:600}
+
+/* Plan view */
+.vp{flex:1;min-height:0;position:relative;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;background:var(--plan-bg);touch-action:none;cursor:crosshair}
+.stage{position:absolute;left:0;top:0;transform-origin:0 0}
+.stage img{display:block;user-select:none;-webkit-user-drag:none;pointer-events:none;max-width:none;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.18)}
+.mk{position:absolute;width:0;height:0}
+.mk i{position:absolute;left:0;top:0;transform:translate(-50%,-50%) scale(var(--inv,1));transform-origin:50% 50%;
+  font-style:normal;font-family:var(--font-num);font-weight:600;font-size:14px;color:#fff;background:var(--mc,var(--tag));
+  min-width:28px;height:28px;padding:0 6px;border-radius:999px;display:grid;place-items:center;
+  box-shadow:0 0 0 2px #fff,0 2px 6px rgba(0,0,0,.35)}
+.mk.pending i{outline:2px dashed var(--ink);outline-offset:2px}
+
+.hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:var(--surface);color:var(--ink);border:1px solid var(--line);
+  border-radius:999px;padding:6px 14px;font-size:14px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.12);max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
+.zoom{position:absolute;right:max(12px,env(safe-area-inset-right,0px));bottom:12px;display:grid;gap:6px}
+.zoom button{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:20px;font-weight:600}
+.foot{display:flex;gap:10px;padding-block:10px;background:var(--surface);border-top:1px solid var(--line);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.foot .btn{flex:1}
+
+/* Sheets */
+.scrim{position:fixed;inset:0;background:rgba(10,14,12,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:560px;max-height:92%;overflow-y:auto;border-radius:16px 16px 0 0;
+  padding-block:14px calc(16px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);justify-self:center}
+.shead{display:flex;align-items:center;gap:12px}
+.bigtag{font-family:var(--font-num);font-weight:600;font-size:20px;background:var(--tag);color:var(--tag-ink);height:40px;min-width:40px;padding:0 10px;border-radius:999px;display:grid;place-items:center}
+.shead h2{margin:0;font-size:20px;flex:1}
+.photo{border-radius:var(--r);background:var(--plan-bg);aspect-ratio:4/3;max-width:100%;display:grid;place-items:center;overflow:hidden;color:var(--muted);font-size:14px;text-align:center;padding:0}
+.photo img{width:100%;height:100%;object-fit:contain;display:block}
+.pick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pick label{display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:var(--r);padding:12px;font-weight:600;cursor:pointer;background:var(--surface)}
+.pick label{position:relative;overflow:hidden}
+.pick input,.hidden-input{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0}
+label.btn{cursor:pointer;user-select:none;-webkit-user-select:none}
+.field{display:grid;gap:6px}
+.field label{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+textarea,input[type=text]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+textarea{min-height:76px;resize:vertical}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row .btn{flex:1 1 120px}
+
+/* List */
+.plist2{display:grid;gap:0}
+.pt{display:grid;grid-template-columns:auto 64px 1fr;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);text-align:left;background:none;border-left:0;border-right:0;border-top:0;width:100%}
+.pt .n{font-family:var(--font-num);font-weight:600;color:var(--tag);font-size:16px;min-width:28px;text-align:right;font-variant-numeric:tabular-nums}
+.pt img,.pt .ph{width:64px;height:48px;object-fit:cover;border-radius:6px;background:var(--plan-bg);display:block}
+.pt p{margin:0;min-width:0;line-height:1.35;overflow-wrap:anywhere}
+.pt p.none{color:var(--muted);font-style:italic}
+
+ .floors{display:flex;gap:6px;overflow-x:auto;padding-block:8px;background:var(--surface);border-bottom:1px solid var(--line);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));scrollbar-width:none}
+.floors::-webkit-scrollbar{display:none}
+.floor{flex:none;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-size:14px;white-space:nowrap;cursor:pointer}
+.floor span{font-family:var(--font-num);font-size:12px;color:var(--muted)}
+.floor.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.floor.on span{color:var(--surface);opacity:.75}
+.floor.add{border-style:dashed;color:var(--tag);user-select:none;-webkit-user-select:none}
+.check{display:flex;gap:10px;align-items:center;font-weight:600;cursor:pointer}
+.check input{width:20px;height:20px;accent-color:var(--tag)}
+.pt small.fl{display:block;font-size:12px;color:var(--muted);font-style:normal;text-transform:uppercase;letter-spacing:.05em}
+.floor em{font-style:normal;font-weight:700;margin-left:2px;opacity:.8}
+.ptrow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;border-bottom:1px solid var(--line)}
+.ptrow .pt{border-bottom:0}
+.trash{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--danger);font-size:15px;font-weight:700}
+.ptconfirm{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 0}
+.ptconfirm span{flex:1 1 100%;font-weight:600}
+.ptconfirm .btn{flex:1;padding:10px}
+.flist{display:grid;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.frow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;text-align:left;padding:10px 12px;background:var(--surface);border:0;border-bottom:1px solid var(--line)}
+.frow:last-child{border-bottom:0}
+.frow span{font-family:var(--font-num);font-size:13px;color:var(--muted);text-align:right}
+.frow i{grid-column:1/-1;font-style:normal;font-size:13px;color:var(--tag)}
+.side{position:absolute;top:0;right:0;bottom:0;width:min(48%,250px);background:var(--surface);border-left:1px solid var(--line);box-shadow:-6px 0 18px rgba(0,0,0,.14);overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;z-index:6;cursor:default;scroll-snap-type:y proximity}
+.sidehead{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:1fr auto;align-items:center;gap:0 8px;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--line)}
+.sidehead b{font-size:15px}
+.sidehead span{grid-row:2;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.sideclose{grid-row:1/3;grid-column:2;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-weight:700}
+.side .spacer{height:calc(50% - 70px)}
+.sideempty{padding:14px 12px;color:var(--muted);font-size:14px;line-height:1.4;margin:0}
+.sitem{scroll-snap-align:center;padding:10px 12px 10px 10px;border-left:4px solid transparent;border-bottom:1px solid var(--line);cursor:pointer;display:grid;gap:4px}
+.sitem .stop{display:flex;align-items:center;gap:8px}
+.sitem .stop b{font-family:var(--font-num);font-size:18px;color:var(--tag);min-width:24px;font-variant-numeric:tabular-nums}
+.sitem .stop img{width:44px;height:33px;object-fit:cover;border-radius:4px;margin-left:auto}
+.sitem p{margin:0;font-size:14px;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.sitem p.none{color:var(--muted);font-style:italic}
+.sactions{display:none;flex-wrap:wrap;gap:5px;margin-top:4px}
+.sactions .sbtn{flex:1 1 auto;padding:6px 7px;font-size:12px}
+.sitem.sel{background:var(--tag-soft);border-left-color:var(--tag)}
+.sitem.sel .sactions{display:flex}
+.sitem.sel p{-webkit-line-clamp:unset;display:block}
+.sbtn{flex:1;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 6px;font-weight:600;font-size:13px}
+.sbtn.danger{color:var(--danger)}
+.sbtn.solid{background:var(--danger);color:var(--surface);border-color:var(--danger)}
+.sask{flex:1 1 100%;font-size:13px;font-weight:600}
+.sidetoggle{position:absolute;top:10px;right:max(10px,env(safe-area-inset-right,0px));z-index:6;height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.14)}
+.vp.with-side .hint{left:calc((100% - min(48%,250px))/2);max-width:calc(100% - min(48%,250px) - 24px);top:56px}
+.vp.with-side .zoom{right:calc(min(48%,250px) + 10px)}
+.vp:not(.with-side) .hint{top:56px}
+.stage.anim{transition:transform .35s ease}
+.stage.dim .mk:not(.sel) i{opacity:.35}
+.mk.sel{z-index:3}
+.mk.sel i{transform:translate(-50%,-50%) scale(calc(var(--inv,1)*1.35))}
+.mk.sel::after{content:"";position:absolute;left:-28px;top:-28px;width:56px;height:56px;border-radius:50%;border:3px solid var(--mc,var(--tag));transform:scale(var(--inv,1));pointer-events:none}
+@media (prefers-reduced-motion:no-preference){.mk.sel::after{animation:pulse 1.4s ease-out infinite}@keyframes pulse{from{transform:scale(calc(var(--inv,1)*.6));opacity:1}to{transform:scale(calc(var(--inv,1)*1.5));opacity:0}}}
+.movebar{position:absolute;top:10px;left:10px;right:10px;z-index:7;display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--ink);color:var(--surface);border-radius:12px;padding:10px 12px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.movebar span{flex:1 1 160px;font-size:13px;line-height:1.35}
+.movebar b{display:block;font-size:15px}
+.movebar .sbtn{flex:0 0 auto;padding:8px 14px;color:var(--ink)}
+.movebar .sbtn.ok{background:var(--tag);color:var(--tag-ink);border-color:var(--tag)}
+.vp.with-side .movebar{right:calc(min(48%,250px) + 10px)}
+.stage.moveon .mk:not(.moving) i{opacity:.35}
+.mk.moving{z-index:4}
+.mk.moving i{background:var(--ink);color:var(--surface);transform:translate(-50%,calc(-100% - 20px*var(--inv,1))) scale(calc(var(--inv,1)*1.45));box-shadow:0 0 0 2px #fff,0 4px 12px rgba(0,0,0,.45)}
+.mk.moving::before{content:"";position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--tag);box-shadow:0 0 0 2px #fff;transform:scale(var(--inv,1))}
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ptile{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--plan-bg)}
+.ptile img{width:100%;height:100%;object-fit:cover;display:block}
+.pdel{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-weight:700;font-size:13px}
+.pempty{grid-column:1/-1;border-radius:var(--r);background:var(--plan-bg);color:var(--muted);font-size:14px;padding:22px;text-align:center}
+.cats{display:flex;flex-wrap:wrap;gap:6px}
+.cat{border:1.5px solid var(--cc);background:transparent;color:var(--ink);border-radius:999px;padding:6px 12px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.cat::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--cc)}
+.cat.on{background:var(--cc);color:#fff}
+.cat.on::before{background:#fff}
+.cchip{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--cc);border:1px solid var(--cc);border-radius:999px;padding:1px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.listhead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}
+.listtools{display:flex;gap:14px;flex-wrap:wrap}
+.linkbtn{background:none;border:0;padding:4px 0;color:var(--tag);font-weight:600;font-size:14px;cursor:pointer}
+.exgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.exgrid .btn{padding:14px 8px;flex-direction:column;gap:2px}
+.exgrid .btn small{font-weight:500;font-size:12px;opacity:.85}
+.cat.add{border-style:dashed;border-color:var(--line);color:var(--tag)}
+.cat.add::before{display:none}
+.catform{flex:1 1 100%;display:grid;gap:10px;border:1px solid var(--line);border-radius:var(--r);padding:10px;background:var(--paper)}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid var(--surface);background:var(--cc);box-shadow:0 0 0 1px var(--line)}
+.sw.on{box-shadow:0 0 0 2px var(--ink)}
+.swcustom{width:30px;height:30px;border:0;padding:0;border-radius:50%;background:none;cursor:pointer}
+.catrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.catrow .cat{margin-right:auto}
+.catrow .sbtn{flex:0 0 auto;padding:8px 14px}
+.sbtn.ok{background:var(--tag);color:var(--tag-ink);border-color:var(--tag)}
+.catlist{display:grid;gap:8px}
+.catitem{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.catitem small{color:var(--muted);font-family:var(--font-num);font-size:12px;margin-right:auto}
+.catitem .sbtn{flex:0 0 auto;padding:7px 12px}
+.muted{color:var(--muted);font-size:13px}
+.stage.moveon .mk.placing i{opacity:1}
+.mk.placing i{box-shadow:0 0 0 3px var(--ink),0 2px 6px rgba(0,0,0,.35)}
+.plc{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap}
+.movebar .sbtn.danger{color:var(--danger)}
+.subs{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.subchip{border:1.5px solid var(--cc);background:transparent;border-radius:999px;padding:5px 10px;font-family:var(--font-num);font-weight:600;font-size:13px;color:var(--ink)}
+.subchip small{font-family:var(--font-ui);color:var(--muted);font-weight:500}
+.inherit{display:grid;gap:6px;justify-items:start;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.inherit p{margin:0;line-height:1.4}
+.mk i{white-space:nowrap}
+.mk.long i{min-width:34px;height:34px;padding:0;font-size:11.5px;letter-spacing:-.02em}
+.prio{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pbtn{width:46px;height:42px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);font-family:var(--font-num);font-weight:600;font-size:18px}
+.pbtn.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.prio .muted{margin-left:4px}
+.uppill{position:fixed;left:max(12px,env(safe-area-inset-left,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.field2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field2 > .field{min-width:0}
+input[type=date]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:11px 12px;min-height:46px}
+@media (max-width:360px){.field2{grid-template-columns:1fr}}
+.fname{margin:0;font-family:var(--font-num);font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.sugg{display:flex;flex-direction:column;align-items:stretch;gap:6px}
+.sugg:empty{display:none}
+.schip{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 10px;font-size:14px;line-height:1.35;color:var(--ink);overflow-wrap:anywhere}
+.schip::before{content:"↳ ";color:var(--tag);font-weight:700}
+.schip small{color:var(--muted);font-family:var(--font-num);font-size:12px}
+img.tload{background:var(--plan-bg)}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:999px;font-size:14px;z-index:40;max-width:calc(100% - 32px);text-align:center}
+.busy{position:fixed;inset:0;z-index:50;background:rgba(10,14,12,.35);display:grid;place-items:center}
+.busy div{background:var(--surface);color:var(--ink);padding:14px 20px;border-radius:12px;font-weight:600}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .2s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}}}
+</style>
+
+</head>
+<body>
+<div class="app" id="app"></div>
+<input type="file" id="planInput" class="hidden-input" accept="application/pdf,image/*">
+<input type="file" id="backupInput" class="hidden-input" accept=".json,application/json">
+<input type="file" id="camInput" class="hidden-input" accept="image/*" capture="environment">
+
+<script>
+"use strict";
+const $ = (s, el=document) => el.querySelector(s);
+const h = (tag, attrs={}, ...kids) => {
+  const el = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs||{})) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) el.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return el;
+};
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+/* ---------- Storage: cloud (db + assets) or this browser (IndexedDB) ---------- */
+const urlCache = new WeakMap();
+const IMGS = new Map();     // local image id -> Blob (file-backed handle from IndexedDB)
+const IMG_URLS = new Map(); // local image id -> object URL, created once per session
+function src(img){
+  if (!img) return null;
+  if (img.id) return "/_blob/" + img.id;
+  if (img.lid) { if (!IMG_URLS.has(img.lid)) { const b = IMGS.get(img.lid); if (!b) return null; IMG_URLS.set(img.lid, URL.createObjectURL(b)); } return IMG_URLS.get(img.lid); }
+  if (img.url) return img.url;
+  if (img.blob){ if(!urlCache.has(img.blob)) urlCache.set(img.blob, URL.createObjectURL(img.blob)); return urlCache.get(img.blob); }
+  return null;
+}
+const imgBlob = img => img && (img.blob || (img.lid && IMGS.get(img.lid)) || null);
+
+/* ---------- Small thumbnails for lists: made once, only when visible, a few at a time ---------- */
+const THUMBS = new Map(), THUMBS_W = new WeakMap();
+const thumbKey = ph => ph.id ? "id:" + ph.id : ph.lid ? "l:" + ph.lid : ph.tmp ? "t:" + ph.tmp : null;
+const thumbGet = ph => { const k = thumbKey(ph); return k ? THUMBS.get(k) : (ph.blob ? THUMBS_W.get(ph.blob) : null); };
+const thumbSet = (ph, u) => { const k = thumbKey(ph); if (k) THUMBS.set(k, u); else if (ph.blob) THUMBS_W.set(ph.blob, u); };
+async function makeThumb(ph, size){
+  let blob = imgBlob(ph); if (!blob) { const r = await fetch(src(ph)); blob = await r.blob(); }
+  const bmp = await createImageBitmap(blob); const k = Math.min(1, size / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(bmp.width*k)); c.height = Math.max(1, Math.round(bmp.height*k));
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); if (bmp.close) bmp.close();
+  return URL.createObjectURL(await canvasBlob(c, "image/jpeg", 0.8));
+}
+const thumbQ = []; let thumbRun = 0;
+const thumbIO = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { thumbIO.unobserve(e.target); thumbQ.push(e.target); pumpThumbs(); } }), { rootMargin: "300px" }) : null;
+function thumb(ph, size = 160){
+  const img = h("img",{alt:"",decoding:"async"}); const c = thumbGet(ph);
+  if (c) { img.src = c; return img; }
+  img._ph = ph; img._size = size; img.className = "tload";
+  if (thumbIO) thumbIO.observe(img); else { thumbQ.push(img); pumpThumbs(); }
+  return img;
+}
+function pumpThumbs(){
+  while (thumbRun < 3 && thumbQ.length) { const img = thumbQ.shift(); thumbRun++;
+    (async () => { try { let u = thumbGet(img._ph); if (!u) { u = await makeThumb(img._ph, img._size); thumbSet(img._ph, u); } img.src = u; }
+      catch(e) { const u = src(img._ph); if (u) img.src = u; }
+      finally { img.classList.remove("tload"); thumbRun--; pumpThumbs(); } })(); }
+}
+
+// This device's storage. Projects and images are kept apart, so saving a project does not rewrite its photos,
+// and the projects are kept in memory after the first read instead of being read back after every save.
+const Local = {
+  mode: "local", _db: null, _cache: null,
+  open(){ return this._db || (this._db = new Promise((res, rej) => {
+    const r = indexedDB.open("ritningsprotokoll", 2);
+    r.onupgradeneeded = () => { const d = r.result;
+      if (!d.objectStoreNames.contains("projects")) d.createObjectStore("projects", {keyPath:"id"});
+      if (!d.objectStoreNames.contains("images")) d.createObjectStore("images"); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  })); },
+  async tx(stores, mode, fn){ const db = await this.open(); return new Promise((res, rej) => {
+    const t = db.transaction(stores, mode); const out = fn(t);
+    t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); },
+  listeners: [],
+  async load(){
+    const [projects, keys, blobs] = await this.tx(["projects","images"], "readonly", t => {
+      const a = t.objectStore("projects").getAll(), k = t.objectStore("images").getAllKeys(), v = t.objectStore("images").getAll();
+      return { get result(){ return [a.result, k.result, v.result]; } }; });
+    keys.forEach((k, i) => IMGS.set(k, blobs[i]));
+    // older data kept photos inside the project record: move them to the image store once
+    const moved = [];
+    for (const p of projects) { let changed = false;
+      const fix = img => { if (img && img.blob && !img.lid && !img.tmp) { const lid = uid(); IMGS.set(lid, img.blob); moved.push([lid, img.blob]); changed = true; const { blob, ...r } = img; return { ...r, lid }; } return img; };
+      for (const f of p.floors || []) { f.drawing = fix(f.drawing);
+        for (const pt of f.points || []) { if (pt.photo) pt.photo = fix(pt.photo); pt.photos = (pt.photos||[]).map(fix); for (const e of pt.extra||[]) e.photos = (e.photos||[]).map(fix); } }
+      if (p.drawing) p.drawing = fix(p.drawing);
+      for (const pt of p.points || []) { if (pt.photo) pt.photo = fix(pt.photo); }
+      if (changed) p.__dirty = true; }
+    if (moved.length) await this.tx(["projects","images"], "readwrite", t => { const is = t.objectStore("images"), ps = t.objectStore("projects");
+      moved.forEach(([k, b]) => is.put(b, k)); projects.filter(p => p.__dirty).forEach(p => { delete p.__dirty; ps.put(p); }); });
+    return projects;
+  },
+  async refresh(){ if (!this._cache) { try { this._cache = await this.load(); } catch(e) { this._cache = []; } } this.listeners.forEach(f => f(this._cache)); },
+  watch(fn){ this.listeners.push(fn); this.refresh(); },
+  async save(p){ await this.tx(["projects"], "readwrite", t => t.objectStore("projects").put(p));
+    if (this._cache) { const i = this._cache.findIndex(x => x.id === p.id); if (i >= 0) this._cache[i] = p; else this._cache.push(p); } },
+  async remove(p){
+    const ids = (normalize(p).floors||[]).flatMap(f => [f.drawing, f.drawing && f.drawing.pdf, ...(f.points||[]).flatMap(allPhotos)]).map(x => x && x.lid).filter(Boolean);
+    await this.tx(["projects","images"], "readwrite", t => { t.objectStore("projects").delete(p.id); ids.forEach(k => t.objectStore("images").delete(k)); });
+    ids.forEach(k => { IMGS.delete(k); const u = IMG_URLS.get(k); if (u) { URL.revokeObjectURL(u); IMG_URLS.delete(k); } });
+    if (this._cache) this._cache = this._cache.filter(x => x.id !== p.id); },
+  async putImage(blob){ const lid = uid(); await this.tx(["images"], "readwrite", t => t.objectStore("images").put(blob, lid)); IMGS.set(lid, blob); return { lid }; },
+  async dropImage(img){ if (!img || !img.lid) return; const k = img.lid;
+    try { await this.tx(["images"], "readwrite", t => t.objectStore("images").delete(k)); } catch(e) {}
+    IMGS.delete(k); const u = IMG_URLS.get(k); if (u) { URL.revokeObjectURL(u); IMG_URLS.delete(k); } },
+};
+
+const Cloud = {
+  mode: "cloud", db: null, assets: null, queue: new Map(),
+  watch(fn){
+    this.db.collection("projects").onSnapshot(
+      snap => fn(snap.docs.map(d => ({ id: d.id, ...structuredClone(d.data()) }))),
+      err => { toast("Kunde inte läsa sparade ritningar (" + err.code + ")"); });
+  },
+  save(p){ // one write at a time per document; photos still uploading are left out until they are done
+    const prev = this.queue.get(p.id) || Promise.resolve();
+    const { id, ...body } = stripPending(p);
+    const next = prev.catch(()=>{}).then(() => this.db.doc("projects/" + id).set(JSON.parse(JSON.stringify(body))));
+    this.queue.set(p.id, next);
+    return next;
+  },
+  async remove(p){
+    await this.db.doc("projects/" + p.id).delete();
+    const ids = (normalize(p).floors||[]).flatMap(f => [f.drawing && f.drawing.id, f.drawing && f.drawing.pdf && f.drawing.pdf.id, ...(f.points||[]).flatMap(x => allPhotos(normPt(x)).map(ph => ph.id))]).filter(Boolean);
+    for (const i of ids) { try { await this.assets.delete(i); } catch(e){} }
+  },
+  async putImage(blob){ const r = await this.assets.upload(blob); return { id: r.id }; },
+  async dropImage(img){ if (img && img.id) { try { await this.assets.delete(img.id); } catch(e){} } },
+};
+
+let store = Local;
+// Save a file: share sheet on phones (Spara i Filer / skicka), download link otherwise
+const IS_APP = true; // installed app version: can hand files to the phone's mail app
+const downloads = { async save({filename, data}){
+  const file = new File([data], filename, { type: data.type || "application/pdf" });
+  if (data.type === "application/json" && navigator.canShare && navigator.canShare({ files:[file] })) { // backups: share sheet (Spara i Filer)
+    try { await navigator.share({ files:[file], title: filename }); return { status:"saved" }; }
+    catch(e){ if (e && e.name === "AbortError") throw { code:"declined" }; }
+  }
+  const url = URL.createObjectURL(file); const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 30000); return { status:"saved" };
+} };
+
+const LOCAL_NOTE = "Allt sparas på den här telefonen. Gör en säkerhetskopia för att spara eller flytta projekten till en annan enhet.";
+/* ---------- Project details: assignment number, inventory date, inspector ---------- */
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+const lastInspector = () => { try { return localStorage.getItem("rp-insp") || ""; } catch(e) { return ""; } };
+function infoFields(info){ // returns inputs for the project details form
+  const nr = h("input",{type:"text",id:"inr",placeholder:"t.ex. 24-1187"}); nr.value = info.nr || "";
+  const date = h("input",{type:"date",id:"idate"}); date.value = info.date || todayISO();
+  const insp = h("input",{type:"text",id:"iinsp",placeholder:"För- och efternamn",autocomplete:"name"}); insp.value = info.inspector != null ? info.inspector : lastInspector();
+  const els = [
+    h("div",{class:"field"}, h("label",{for:"inr"},"Uppdragsnummer"), nr),
+    h("div",{class:"field2"},
+      h("div",{class:"field"}, h("label",{for:"idate"},"Inventeringsdatum"), date),
+      h("div",{class:"field"}, h("label",{for:"iinsp"},"Kontrollant"), insp)),
+  ];
+  return { els, read: () => { const v = { nr: nr.value.trim(), date: date.value || "", inspector: insp.value.trim() };
+    try { if (v.inspector) localStorage.setItem("rp-insp", v.inspector); } catch(e){} return v; } };
+}
+const infoLine = (info) => [info && info.nr ? "Uppdragsnr " + info.nr : null, info && info.date ? "Inventerad " + info.date : null, info && info.inspector ? "Kontrollant: " + info.inspector : null].filter(Boolean).join(" · ");
+
+/* ---------- Background photo upload ----------
+   With cloud storage a new photo is shown and saved at once as a temporary local copy {blob, tmp};
+   it is shrunk and uploaded in the background, then swapped for the stored copy and the project saved again. */
+const UPQ = []; let upBusy = false;
+const isTmp = ph => ph && ph.tmp;
+function stripPending(p){
+  if (!p.floors) return p;
+  const clean = list => (list||[]).filter(ph => !isTmp(ph));
+  return { ...p, floors: p.floors.map(f => ({ ...f, points: (f.points||[]).map(pt => ({ ...pt, photos: clean(pt.photos), extra: (pt.extra||[]).map(e => ({ ...e, photos: clean(e.photos) })) })) })) };
+}
+function findPhotoList(p, job){ // where a queued photo belongs
+  for (const f of p.floors) for (const pt of f.points) if (pt.id === job.ptId) {
+    if (job.subId == null) return { f, pt, list: pt.photos };
+    const e = pt.extra.find(x => x.id === job.subId); return e ? { f, pt, e, list: e.photos } : null; }
+  return null;
+}
+function mergePending(list){ // keep not-yet-uploaded photos visible when fresh data arrives from storage
+  for (const job of UPQ) { const p = list.find(x => x.id === job.pid); if (!p) continue;
+    const hit = findPhotoList(p, job); if (hit && !hit.list.some(ph => ph.tmp === job.photo.tmp)) hit.list.push(job.photo); }
+  return list;
+}
+function queuePhoto(photo, pid, ptId, subId){ UPQ.push({ photo, pid, ptId, subId }); upPill(); runUploads(); }
+async function runUploads(){
+  if (upBusy) return; upBusy = true;
+  while (UPQ.length) {
+    const job = UPQ[0]; let stored = null;
+    try { const small = await shrink(job.photo.blob); stored = await store.putImage(small.blob); }
+    catch(e) { toast("Ett foto kunde inte laddas upp. Försöker igen…"); await new Promise(r => setTimeout(r, 4000)); continue; }
+    UPQ.shift();
+    const p = S.projects.find(x => x.id === job.pid); const hit = p && findPhotoList(p, job);
+    if (!hit || !hit.list.some(ph => ph.tmp === job.photo.tmp)) { store.dropImage(stored); upPill(); continue; } // removed meanwhile
+    const swap = l => l.map(ph => ph.tmp === job.photo.tmp ? stored : ph);
+    const np = { ...p, floors: p.floors.map(f => f !== hit.f ? f : { ...f, points: f.points.map(pt => pt !== hit.pt ? pt
+      : job.subId == null ? { ...pt, photos: swap(pt.photos) } : { ...pt, extra: pt.extra.map(e => e !== hit.e ? e : { ...e, photos: swap(e.photos) }) }) }) };
+    replaceLocal(np); upPill();
+    try { await store.save(np); } catch(e) {}
+  }
+  upBusy = false; upPill();
+}
+function upPill(){
+  let el = document.getElementById("uppill");
+  if (!UPQ.length) { if (el) el.remove(); return; }
+  if (!el) { el = h("div",{id:"uppill",class:"uppill",role:"status"}); document.body.append(el); }
+  el.textContent = "Laddar upp " + UPQ.length + (UPQ.length === 1 ? " foto…" : " foton…");
+}
+window.addEventListener("beforeunload", e => { if (UPQ.length) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---------- State ---------- */
+const S = { projects: [], current: null, floor: null, panel: (()=>{ try { return localStorage.getItem("rp-side") === "1"; } catch(e){ return false; } })(), sel: null, view: "list", pending: null, sheet: null, scale: 1, tx: 0, ty: 0, fitted: false };
+const cur = () => S.projects.find(p => p.id === S.current);
+// A project holds several floors (våningsplan); each floor has its own drawing and points.
+// Point numbers run through the whole project, so number 7 is unique across all floors.
+// Categories are created by the user, per project (name + colour). New projects start with the
+// categories of the most recently used project. The colour marks the number on the drawing and in reports.
+const OLD_CATS = [ // fixed list used by an earlier version; kept only to carry old data over
+  { id:"brandcell", name:"Brandcell", color:"#c62828" }, { id:"dorr", name:"Dörr", color:"#8d4e2a" },
+  { id:"utrymning", name:"Utrymning", color:"#1565c0" }, { id:"skyltning", name:"Skyltning", color:"#2e7d32" },
+  { id:"slack", name:"Släckutrustning", color:"#6a1b9a" }, { id:"larm", name:"Brandlarm", color:"#a87600" },
+  { id:"ovrigt", name:"Övrigt", color:"#546e7a" },
+];
+const CAT_COLORS = ["#c62828","#ad1457","#6a1b9a","#283593","#1565c0","#00838f","#2e7d32","#7a8b00","#a87600","#8d4e2a","#546e7a","#1d2321"];
+let CATS = []; // categories of the open project
+const useCats = p => { CATS = (p && p.cats) || []; return CATS; };
+const lastCats = () => { const p = [...S.projects].sort((a,b) => (b.updated||0) - (a.updated||0))[0]; return p && p.cats ? p.cats.map(c => ({ ...c })) : []; };
+const NO_CAT_COLOR = "#e2551b";
+const catOf = pt => CATS.find(c => c.id === pt.cat) || null;
+const catColor = pt => (catOf(pt) || {}).color || NO_CAT_COLOR;
+const catName = pt => (catOf(pt) || {}).name || "";
+// Each point holds a list of photos (older data had a single `photo`)
+// One object can be shown at several places on its floor: x/y is the main place, `extra` holds the others
+const normPt = pt => { let q = pt; if (!Array.isArray(q.photos)) { const { photo, ...r } = q; q = { ...r, photos: photo ? [photo] : [] }; }
+  return { ...q, extra: (Array.isArray(q.extra) ? q.extra : []).map(e => ({ ...(e.id ? { id: e.id } : {}), x: e.x, y: e.y, photos: Array.isArray(e.photos) ? e.photos : [] })) }; };
+// Sub-points of point n are labelled n.1, n.2 …; they share the description, category and colour of n
+const subLabel = (n, k) => k < 0 ? String(n) : n + "." + (k + 1);
+const places = pt => [{ x: pt.x, y: pt.y, k: -1, label: String(pt.n), photos: pt.photos },
+  ...(pt.extra||[]).map((e, i) => ({ x: e.x, y: e.y, k: i, label: subLabel(pt.n, i), photos: e.photos || [] }))];
+const allPhotos = pt => [...(pt.photos||[]), ...(pt.extra||[]).flatMap(e => e.photos||[])];
+function normalize(p){
+  if (!p) return p;
+  if (!Array.isArray(p.floors)) {
+    const { drawing, points, ...rest } = p;
+    p = { ...rest, floors: drawing ? [{ id: "f1", name: "Plan 1", drawing, points: points || [] }] : [] };
+  }
+  const floors = p.floors.map(f => ({ ...f, points: (f.points||[]).map(normPt) }));
+  let cats = p.cats;
+  if (!Array.isArray(cats)) { const used = new Set(floors.flatMap(f => f.points.map(pt => pt.cat)).filter(Boolean)); cats = OLD_CATS.filter(c => used.has(c.id)); }
+  return { ...p, floors, cats };
+}
+const fl = () => { const p = cur(); if (!p) return null; return p.floors.find(f => f.id === S.floor) || p.floors[0] || null; };
+const allPts = p => p.floors.flatMap(f => (f.points||[]).map(pt => ({ ...pt, floorId: f.id, floorName: f.name })));
+const ptCount = p => p.floors.reduce((a,f) => a + (f.points||[]).length, 0);
+function withFloor(p, fid, change){ return { ...p, floors: p.floors.map(f => f.id === fid ? { ...f, ...change(f) } : f), updated: Date.now() }; }
+function renumber(p){ // keep numbers 1..N with no gaps, in their current order
+  const order = allPts(p).sort((a,b)=>a.n-b.n); const map = new Map(order.map((pt,i)=>[pt.floorId+":"+pt.n, i+1]));
+  return { ...p, floors: p.floors.map(f => ({ ...f, points: (f.points||[]).map(pt => ({ ...pt, n: map.get(f.id+":"+pt.n) })) })) };
+}
+
+/* ---------- Helpers ---------- */
+let toastT;
+function toast(msg){ document.querySelectorAll(".toast").forEach(e=>e.remove()); const t = h("div",{class:"toast",role:"status"},msg); document.body.append(t); clearTimeout(toastT); toastT = setTimeout(()=>t.remove(), 2600); }
+function busy(msg){ const b = h("div",{class:"busy"}, h("div",{}, msg)); document.body.append(b); return Object.assign(() => b.remove(), { set: m => { b.firstChild.textContent = m; } }); }
+function loadImg(url){ return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; }); }
+function canvasBlob(c, type="image/jpeg", q=0.85){ return new Promise(r => c.toBlob(r, type, q)); }
+async function shrink(file, max=1500, q=0.8){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImg(url);
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return { blob: await canvasBlob(c, "image/jpeg", q), w: c.width, h: c.height };
+  } finally { URL.revokeObjectURL(url); }
+}
+async function openPdf(file){
+  const lib = window.pdfjsLib;
+  if (!lib) throw new Error("PDF-läsaren kunde inte laddas");
+  return lib.getDocument({ data: await file.arrayBuffer() }).promise;
+}
+// One page of the uploaded PDF as its own small PDF file, kept with the floor (falls back to the whole file)
+async function singlePagePdf(file, pageNo){
+  try {
+    if (!window.PDFLib) throw 0;
+    const { PDFDocument } = window.PDFLib;
+    const srcDoc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+    const out = await PDFDocument.create(); const [pg] = await out.copyPages(srcDoc, [pageNo - 1]); out.addPage(pg);
+    return { blob: new Blob([await out.save()], { type: "application/pdf" }), page: 1 };
+  } catch(e) { return { blob: new Blob([await file.arrayBuffer()], { type: "application/pdf" }), page: pageNo }; }
+}
+async function pdfPageImage(pdf, pageNo){
+  const page = await pdf.getPage(Math.min(Math.max(1,pageNo), pdf.numPages));
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(4, 3200 / Math.max(base.width, base.height));
+  const vp = page.getViewport({ scale });
+  const c = document.createElement("canvas"); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,c.width,c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return { blob: await canvasBlob(c, "image/png"), w: c.width, h: c.height };
+}
+const fmtDate = t => new Date(t).toLocaleDateString("sv-SE", { day:"numeric", month:"short", year:"numeric" });
+
+/* ---------- Rendering ---------- */
+const app = $("#app");
+function render(){
+  if (S.view === "plan" && (!cur() || !fl())) S.view = "list";
+  useCats(cur());
+  app.replaceChildren(S.view === "plan" ? planView() : listView());
+  if (S.view === "plan") layoutStage();
+}
+
+function listView(){
+  const items = [...S.projects].sort((a,b) => (b.updated||0) - (a.updated||0));
+  return h("div",{class:"view"},
+    h("div",{class:"bar"}, h("h1",{},"BRS - Inventeringsapp"),
+      h("label",{class:"btn primary",for:"planInput",role:"button",tabindex:"0",style:"padding:9px 14px;font-size:15px",onclick:()=>resetPlanInput("project")},"+ Nytt projekt")),
+    h("div",{class:"scroll"},
+      store.mode === "local" ? h("p",{class:"note",style:"margin:0 0 12px"}, LOCAL_NOTE) : null,
+      items.length ? [h("div",{class:"listhead"}, h("div",{class:"eyebrow"}, items.length + " projekt"),
+          h("div",{class:"listtools"},
+            h("label",{class:"linkbtn",for:"backupInput",role:"button",tabindex:"0",onclick:()=>{ $("#backupInput").value = ""; }},"Läs in säkerhetskopia"),
+            downloads ? h("button",{class:"linkbtn",onclick:()=>backupProjects(S.projects, "Alla projekt")},"Säkerhetskopiera alla") : null)),
+        h("div",{class:"plist"}, items.map(p => { const f0 = p.floors[0]; const nf = p.floors.length; return h("button",{class:"pcard",onclick:()=>openProject(p.id)},
+          f0 ? thumb(f0.drawing, 200) : h("div",{class:"ph"}),
+          h("div",{}, h("b",{},p.name), h("small",{}, [p.info && p.info.nr ? "Nr " + p.info.nr : null, p.info && p.info.date ? p.info.date : null, nf + " våningsplan"].filter(Boolean).join(" · "))),
+          h("span",{class:"count"}, ptCount(p) + " pkt")
+        ); }))]
+      : h("div",{class:"empty"},
+          h("h2",{},"Ladda upp en ritning för att börja"),
+          h("ol",{class:"steps"},
+            h("li",{},h("span",{},"1"),"Välj en planritning som PDF eller bild. Fler våningsplan lägger du till i projektet efteråt."),
+            h("li",{},h("span",{},"2"),"Tryck där något ska dokumenteras, till exempel vid en dörr. Punkten får nästa nummer."),
+            h("li",{},h("span",{},"3"),"Ta eller välj ett foto och skriv en kort beskrivning. Foto 1 hör till punkt 1, och så vidare.")),
+          h("label",{class:"btn primary",for:"planInput",role:"button",tabindex:"0",onclick:()=>resetPlanInput("project")},"Välj ritning"),
+          h("label",{class:"btn ghost",for:"backupInput",role:"button",tabindex:"0",onclick:()=>{ $("#backupInput").value = ""; }},"Läs in säkerhetskopia"))
+    ));
+}
+
+let stageEl, vpEl;
+function planView(){
+  const p = cur(); const f = fl(); S.floor = f.id;
+  const pts = f.points || []; const next = ptCount(p) + 1;
+  vpEl = h("div",{class:"vp",id:"vp"});
+  stageEl = h("div",{class:"stage"}, drawingEl(f, p)); lastInv = 0;
+  if (S.moving && S.moving.fid !== f.id) S.moving = null;
+  for (const pt of pts) for (const pl of places(pt)) { const mv = S.moving && S.moving.n === pt.n && S.moving.k === pl.k;
+    const m = marker(pt.n, mv ? S.moving.x : pl.x, mv ? S.moving.y : pl.y, (pl.photos.length ? "" : "nophoto") + (pl.k >= 0 ? " extra" : "") + (mv ? " moving" : ""), catColor(pt), pl.label);
+    m.dataset.k = pl.k; stageEl.append(m); }
+  if (S.placing && S.placing.fid !== f.id) S.placing = null;
+  stageEl.classList.toggle("moveon", !!S.moving || !!S.placing);
+  if (S.placing) stageEl.querySelectorAll(`.mk[data-n="${S.placing.n}"]`).forEach(m => m.classList.add("placing"));
+  if (S.pending) stageEl.append(marker(S.pending.n, S.pending.x, S.pending.y, "pending"));
+  vpEl.append(stageEl, S.moving
+    ? h("div",{class:"movebar"}, h("span",{}, h("b",{}, "Flytta punkt " + subLabel(S.moving.n, S.moving.k)), "Dra punkten, eller tryck där den ska ligga."),
+        
+        h("button",{class:"sbtn",onclick:()=>finishMove(false)},"Avbryt"), h("button",{class:"sbtn ok",onclick:()=>finishMove(true)},"Klar"))
+    : S.placing
+    ? h("div",{class:"movebar"}, h("span",{}, h("b",{}, "Underpunkter till punkt " + S.placing.n), "Tryck på ritningen för att lägga till " + nextSub(S.placing.n) + "."),
+        h("button",{class:"sbtn ok",onclick:()=>{ S.placing = null; render(); }},"Klar"))
+    : h("div",{class:"hint"}, next > 1 ? "Tryck för punkt " + next + " · dubbeltryck på en punkt för att flytta den" : "Tryck på ritningen för att sätta punkt 1"),
+    h("div",{class:"zoom"}, h("button",{"aria-label":"Zooma in",onclick:e=>{e.stopPropagation();zoomBy(1.4)}},"+"),
+      h("button",{"aria-label":"Zooma ut",onclick:e=>{e.stopPropagation();zoomBy(1/1.4)}},"−"),
+      h("button",{"aria-label":"Anpassa",style:"font-size:13px",onclick:e=>{e.stopPropagation();S.fitted=false;layoutStage()}},"⤢")));
+  if (S.panel) { vpEl.classList.add("with-side"); vpEl.append(sidePanel(f)); if (S.sel != null && !pts.some(x => x.n === S.sel)) S.sel = null; }
+  else vpEl.append(h("button",{class:"sidetoggle",onclick:()=>toggleSide(true)},"☰ Objekt (" + pts.length + ")"));
+  bindGestures(vpEl);
+  const tabs = h("div",{class:"floors",role:"tablist","aria-label":"Våningsplan"},
+    p.floors.map(x => h("button",{class:"floor" + (x.id===f.id?" on":""),role:"tab","aria-selected":x.id===f.id?"true":"false",onclick:()=>{ if (x.id===S.floor) return openSheet({type:"floor",fid:x.id}); S.floor = x.id; S.fitted = false; S.pending = null; render(); }},
+      x.name, h("span",{}, (x.points||[]).length), x.id===f.id ? h("em",{"aria-hidden":"true"},"⋯") : null)),
+    h("label",{class:"floor add",for:"planInput",role:"button",tabindex:"0",onclick:()=>resetPlanInput("floor")},"+ Våningsplan"));
+  return h("div",{class:"view"},
+    h("div",{class:"bar"},
+      h("button",{class:"iconbtn","aria-label":"Tillbaka",onclick:()=>{S.view="list";S.pending=null;S.moving=null;S.placing=null;render()}},"‹"),
+      h("h1",{},p.name),
+      h("button",{class:"iconbtn",onclick:()=>openSheet({type:"project"})},"Mer")),
+    tabs,
+    vpEl,
+    h("div",{class:"foot"},
+      h("button",{class:"btn ghost",onclick:()=>openSheet({type:"list"})},"Punkter (" + ptCount(p) + ")"),
+      downloads ? h("button",{class:"btn primary",onclick:()=>openSheet({type:"export"})},"Exportera") : null));
+}
+const DRAWING_ELS = new Map(); // one <img> per drawing, reused so it is not decoded again on every redraw
+function drawingEl(f, p){
+  const u = src(f.drawing); let el = DRAWING_ELS.get(u);
+  if (!el) { el = h("img",{src:u,width:f.drawing.w,height:f.drawing.h,draggable:"false",decoding:"async"}); DRAWING_ELS.set(u, el); if (DRAWING_ELS.size > 6) DRAWING_ELS.delete(DRAWING_ELS.keys().next().value); }
+  el.alt = "Ritning: " + p.name + ", " + f.name; return el;
+}
+function marker(n, x, y, cls, color, label){ const m = h("div",{class:"mk " + (cls||"") + (String(label || n).length > 2 ? " long" : ""), "data-n": n, style:`left:${x*100}%;top:${y*100}%` + (color ? `;--mc:${color}` : "")}, h("i",{},label || String(n))); return m; }
+
+function layoutStage(){
+  const f = fl(); if (!f || !vpEl) return;
+  const W = vpEl.clientWidth, H = vpEl.clientHeight;
+  stageEl.style.width = f.drawing.w + "px"; stageEl.style.height = f.drawing.h + "px";
+  if (!S.fitted && W) {
+    const AW = W - sideW();
+    S.scale = Math.min(AW / f.drawing.w, H / f.drawing.h) * 0.96;
+    S.tx = (AW - f.drawing.w*S.scale)/2; S.ty = (H - f.drawing.h*S.scale)/2; S.fitted = true;
+  }
+  applyT();
+  if (S.panel) { const side = vpEl.querySelector(".side"); const el = S.sel != null && side && side.querySelector(`.sitem[data-n="${S.sel}"]`);
+    if (el) { side._programmatic = true; side.scrollTop = el.offsetTop + el.offsetHeight/2 - side.clientHeight/2; setTimeout(()=>{ side._programmatic = false; }, 50); }
+    markSel(); }
+}
+let tFrame = 0, lastInv = 0;
+function applyT(){ if (!stageEl || tFrame) return; tFrame = requestAnimationFrame(() => { tFrame = 0; if (!stageEl) return;
+  stageEl.style.transform = `translate(${S.tx}px,${S.ty}px) scale(${S.scale})`;
+  const inv = 1/S.scale; if (inv !== lastInv) { lastInv = inv; stageEl.style.setProperty("--inv", inv); } }); }
+function clampScale(s){ const f = fl(); const W = vpEl.clientWidth, H = vpEl.clientHeight; const fit = Math.min(W/f.drawing.w, H/f.drawing.h); return Math.max(fit*0.5, Math.min(s, fit*14, 6)); }
+function zoomAt(cx, cy, k){ const ns = clampScale(S.scale*k); const r = ns/S.scale; S.tx = cx - (cx - S.tx)*r; S.ty = cy - (cy - S.ty)*r; S.scale = ns; applyT(); }
+function zoomBy(k){ zoomAt(vpEl.clientWidth/2, vpEl.clientHeight/2, k); }
+
+function bindGestures(el){
+  const ptrs = new Map(); let start = null, pinch = null, moved = false, drag = null;
+  const local = e => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  el.addEventListener("pointerdown", e => {
+    if (e.target.closest("button,.side")) return;
+    el.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, local(e));
+    if (ptrs.size === 1) { start = { ...local(e), tx: S.tx, ty: S.ty, t: Date.now() }; moved = false; drag = null;
+      if (S.moving) { // grabbing the point being moved? (the tag sits above the point)
+        const f = fl(); const q = local(e);
+        const sx = S.tx + S.moving.x*f.drawing.w*S.scale, sy = S.ty + S.moving.y*f.drawing.h*S.scale;
+        if (Math.hypot(q.x - sx, q.y - (sy - 34)) < 30 || Math.hypot(q.x - sx, q.y - sy) < 26) drag = { dx: q.x - sx, dy: q.y - sy };
+      } }
+    if (ptrs.size === 2) { const [a,b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x-b.x, a.y-b.y), s: S.scale, mx:(a.x+b.x)/2, my:(a.y+b.y)/2, tx:S.tx, ty:S.ty }; moved = true; }
+  });
+  el.addEventListener("pointermove", e => {
+    if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, local(e));
+    if (ptrs.size >= 2 && pinch) {
+      const [a,b] = [...ptrs.values()]; const d = Math.hypot(a.x-b.x, a.y-b.y);
+      const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+      const ns = clampScale(pinch.s * d / pinch.d); const r = ns / pinch.s;
+      S.scale = ns; S.tx = mx - (pinch.mx - pinch.tx)*r; S.ty = my - (pinch.my - pinch.ty)*r; applyT();
+    } else if (start) {
+      const p = local(e); const dx = p.x - start.x, dy = p.y - start.y;
+      if (!moved && Math.hypot(dx,dy) > 6) moved = true;
+      if (moved && drag && S.moving) {
+        const f = fl(); setMovePos((p.x - drag.dx - S.tx)/S.scale/f.drawing.w, (p.y - drag.dy - S.ty)/S.scale/f.drawing.h);
+      } else if (moved) { S.tx = start.tx + dx; S.ty = start.ty + dy; applyT(); }
+    }
+  });
+  const end = e => {
+    if (!ptrs.has(e.pointerId)) return;
+    const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinch = null;
+    if (ptrs.size === 0) { drag = null;
+      if (!moved && start && e.type === "pointerup") tap(p.x, p.y);
+      start = null;
+    } else if (ptrs.size === 1) { const q = [...ptrs.values()][0]; start = { ...q, tx: S.tx, ty: S.ty }; }
+  };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  el.addEventListener("wheel", e => { if (e.target.closest(".side")) return; e.preventDefault(); const p = local(e); zoomAt(p.x, p.y, Math.exp(-e.deltaY*0.0015)); }, { passive:false });
+}
+
+/* ---------- Copy of camera photos to the phone's photo album (app version) ----------
+   A web app cannot write to the photo library by itself. On iPhone the share sheet opens with the photos
+   ("Spara bilder"); on Android the photos are downloaded, which puts them in the gallery's Downloads folder. */
+const albumOn = () => { try { return localStorage.getItem("rp-album") !== "0"; } catch(e) { return true; } };
+const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function toAlbum(files, base){ // must be called straight from the tap, before anything is awaited
+  if (!IS_APP || !albumOn() || !files.length) return;
+  const d = new Date(), z = n => String(n).padStart(2, "0");
+  const stamp = d.getFullYear() + z(d.getMonth()+1) + z(d.getDate()) + "-" + z(d.getHours()) + z(d.getMinutes()); // local time
+  const named = files.map((f, i) => new File([f], (base + " " + stamp + (files.length > 1 ? "-" + (i+1) : "")).replace(/[^\wåäöÅÄÖ.\- ]+/g, "") + ".jpg", { type: f.type || "image/jpeg" }));
+  if (isIOS() && navigator.canShare && navigator.canShare({ files: named })) {
+    navigator.share({ files: named }).catch(() => {});
+  } else {
+    named.forEach((file, i) => setTimeout(() => { const u = URL.createObjectURL(file); const a = document.createElement("a");
+      a.href = u; a.download = file.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 30000); }, i * 250));
+  }
+}
+
+/* ---------- Camera first: a tap on the drawing opens the camera at once; the point's sheet follows ---------- */
+const camFirst = () => { try { return localStorage.getItem("rp-cam") !== "0"; } catch(e) { return true; } };
+function cameraThen(next){
+  const input = $("#camInput"); input.value = "";
+  let opened = false, finished = false;
+  const finish = files => { if (finished) return; finished = true; cleanup(); next(files); };
+  const onAway = () => { opened = true; };
+  const onBack = () => { if (!opened) return; setTimeout(() => finish(input.files && input.files.length ? [...input.files] : []), 600); };
+  const onChange = () => finish([...input.files]);
+  const cleanup = () => { window.removeEventListener("blur", onAway); document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onBack); input.removeEventListener("change", onChange); };
+  const onVis = () => document.hidden ? onAway() : onBack();
+  window.addEventListener("blur", onAway); document.addEventListener("visibilitychange", onVis); window.addEventListener("focus", onBack); input.addEventListener("change", onChange);
+  try { input.click(); } catch(e) {}
+  setTimeout(() => { if (!opened && !finished) finish([]); }, 900); // camera could not open here: show the sheet as usual
+}
+
+/* ---------- Moving a point: select it, then drag (or tap where it should go) ---------- */
+let lastTap = { n:null, t:0 };
+function startMove(n, k = -1){
+  const f = fl(); const pt = (f.points||[]).find(x => x.n === n); if (!pt) return;
+  dropSheet(); S.pending = null; S.placing = null;
+  const pl = places(pt).find(q => q.k === k) || places(pt)[0];
+  S.moving = { n, k: pl.k, fid: f.id, x: pl.x, y: pl.y, ox: pl.x, oy: pl.y };
+  if (S.panel) S.sel = n;
+  render();
+  if (S.panel) selectPoint(n, { scroll:true, pan:true });
+  else { panToPoint({ ...pt, x: pl.x, y: pl.y }, false); }
+}
+function nextSub(n){ const pt = (fl().points||[]).find(x => x.n === n); return subLabel(n, pt ? pt.extra.length : 0); }
+function startPlacing(n){ dropSheet(); S.pending = null; S.moving = null; S.placing = { n, fid: fl().id }; render(); }
+// A tap in sub-point mode places the next sub-point (n.1, n.2 …) and opens it so a photo can be added
+function addPlacement(x, y){
+  const pl = S.placing; const pt = (fl().points||[]).find(q => q.n === pl.n); if (!pt) return;
+  S.pendingSub = { n: pl.n, x, y };
+  const m = marker(pl.n, x, y, "pending", catColor(pt), subLabel(pl.n, pt.extra.length)); stageEl.append(m);
+  const k = pt.extra.length;
+  if (camFirst()) return cameraThen(files => openSheet({ type:"sub", n: pl.n, k, isNew: true, files }));
+  openSheet({ type:"sub", n: pl.n, k, isNew: true });
+}
+async function removeSub(n, k){
+  const f = fl(); const pt = (f.points||[]).find(q => q.n === n); const old = pt && pt.extra[k];
+  const np = withFloor(cur(), f.id, ff => ({ points: ff.points.map(q => q.n === n ? { ...q, extra: q.extra.filter((_, i) => i !== k) } : q) }));
+  replaceLocal(np); if (old) old.photos.forEach(ph => store.dropImage(ph));
+  try { await store.save(np); toast("Underpunkt " + subLabel(n, k) + " borttagen"); } catch(e){ toast("Kunde inte spara"); }
+  dropSheet(); render();
+}
+// Photo picker shared by the point and sub-point sheets
+function photoPicker(initial, preFiles){
+  let keep = [...initial]; const added = (preFiles||[]).map(file => ({ file, url: URL.createObjectURL(file), cam: true }));
+  const grid = h("div",{class:"pgrid"});
+  const draw = () => {
+    const tiles = [
+      ...keep.map((ph, i) => h("div",{class:"ptile"}, thumb(ph, 300),
+        h("button",{class:"pdel","aria-label":"Ta bort foto",onclick:()=>{ keep = keep.filter(x => x !== ph); draw(); }},"✕"))),
+      ...added.map(a => h("div",{class:"ptile"}, h("img",{src:a.url,alt:"Nytt foto"}),
+        h("button",{class:"pdel","aria-label":"Ta bort foto",onclick:()=>{ added.splice(added.indexOf(a),1); draw(); }},"✕"))),
+    ];
+    grid.replaceChildren(...(tiles.length ? tiles : [h("div",{class:"pempty"},"Inga foton än")]));
+  };
+  draw();
+  const onFile = e => { const cam = e.target.hasAttribute("capture"); for (const file of e.target.files) added.push({ file, url: URL.createObjectURL(file), cam }); e.target.value = ""; draw(); };
+  const buttons = h("div",{class:"pick"},
+    h("label",{}, h("input",{type:"file",accept:"image/*",capture:"environment",onchange:onFile}), "Ta foto"),
+    h("label",{}, h("input",{type:"file",accept:"image/*",multiple:true,onchange:onFile}), "Välj bilder"));
+  return { grid, buttons, count: () => keep.length + added.length, camFiles: () => added.filter(a => a.cam).map(a => a.file),
+    async commit(done){ // returns the final list, the removed ones and the photos still to upload
+      const photos = [...keep], fresh = [];
+      for (let i = 0; i < added.length; i++) {
+        if (store.mode === "cloud") { const t = { blob: added[i].file, tmp: uid() }; photos.push(t); fresh.push(t); continue; } // uploaded in the background
+        if (added.length > 1) done.set("Sparar foto " + (i+1) + " av " + added.length + "…");
+        const small = await shrink(added[i].file); photos.push(await store.putImage(small.blob)); }
+      return { photos, removed: initial.filter(ph => !keep.includes(ph)), fresh };
+    } };
+}
+function subSheet(cfg){
+  const f = fl(); const pt = (f.points||[]).find(q => q.n === cfg.n); if (!pt) return h("div",{});
+  const sub = cfg.isNew ? { x: S.pendingSub.x, y: S.pendingSub.y, photos: [] } : pt.extra[cfg.k];
+  const label = subLabel(cfg.n, cfg.k);
+  const pick = photoPicker(sub.photos, cfg.files);
+  const saveBtn = h("button",{class:"btn primary",onclick:async()=>{
+    toAlbum(pick.camFiles(), cur().name + " punkt " + label);
+    saveBtn.disabled = true; const done = busy("Sparar…");
+    try {
+      const { photos, removed, fresh } = await pick.commit(done);
+      const ptId = pt.id || uid(), subId = sub.id || uid();
+      const np = withFloor(cur(), f.id, ff => ({ points: ff.points.map(q => q.n !== cfg.n ? q
+        : { ...q, id: ptId, extra: cfg.isNew ? [...q.extra, { id: subId, x: sub.x, y: sub.y, photos }] : q.extra.map((e, i) => i === cfg.k ? { ...e, id: subId, photos } : e) }) }));
+      replaceLocal(np); S.pendingSub = null; dropSheet(); render(); toast("Underpunkt " + label + " sparad");
+      fresh.forEach(t => queuePhoto(t, np.id, ptId, subId));
+      await store.save(np); removed.forEach(ph => store.dropImage(ph));
+    } catch(e) { toast("Kunde inte spara: " + (e.code || e.message || "okänt fel")); saveBtn.disabled = false; }
+    finally { done(); }
+  }}, cfg.isNew ? "Spara " + label : "Spara");
+  const delWrap = h("div",{});
+  if (!cfg.isNew) { const ask = h("button",{class:"btn danger",onclick:()=>confirmRow(delWrap, ask, "Ta bort underpunkt " + label + "? Underpunkterna efter får nya nummer.", "Ta bort", ()=>removeSub(cfg.n, cfg.k))},"Ta bort underpunkt"); delWrap.append(ask); }
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("span",{class:"bigtag",style:"background:" + catColor(pt)}, label), h("h2",{}, cfg.isNew ? "Ny underpunkt" : "Underpunkt " + label), h("span",{class:"count"}, f.name)),
+    pick.grid, pick.buttons,
+    h("div",{class:"field"}, h("label",{},"Beskrivning (från punkt " + cfg.n + ")"),
+      h("div",{class:"inherit"}, catOf(pt) ? h("span",{class:"cchip",style:"--cc:" + catColor(pt)}, catName(pt)) : null, h("p",{}, pt.desc || "Ingen beskrivning"),
+        h("button",{class:"linkbtn",onclick:()=>{ S.pendingSub = null; openSheet({type:"point", n: cfg.n}); }},"Ändra beskrivningen på punkt " + cfg.n))),
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:()=>{ S.pendingSub = null; closeSheet(); render(); }},"Avbryt"), saveBtn),
+    !cfg.isNew ? h("button",{class:"btn ghost",onclick:()=>startMove(cfg.n, cfg.k)},"Flytta " + label) : null,
+    delWrap);
+}
+function moveMarkerEl(){ return stageEl && stageEl.querySelector(`.mk[data-n="${S.moving.n}"][data-k="${S.moving.k}"]`); }
+function setMovePos(x, y){
+  S.moving.x = Math.min(1, Math.max(0, x)); S.moving.y = Math.min(1, Math.max(0, y));
+  const m = moveMarkerEl(); if (m) { m.style.left = S.moving.x*100 + "%"; m.style.top = S.moving.y*100 + "%"; }
+}
+async function finishMove(save){
+  const mv = S.moving; if (!mv) return; S.moving = null;
+  if (save && (mv.x !== mv.ox || mv.y !== mv.oy)) {
+    const np = withFloor(cur(), mv.fid, ff => ({ points: (ff.points||[]).map(pt => pt.n !== mv.n ? pt
+      : mv.k < 0 ? { ...pt, x: mv.x, y: mv.y } : { ...pt, extra: pt.extra.map((e, i) => i === mv.k ? { x: mv.x, y: mv.y } : e) }) }));
+    replaceLocal(np); render();
+    try { await store.save(np); toast("Punkt " + mv.n + " flyttad"); } catch(e){ toast("Kunde inte spara den nya platsen"); }
+  } else { render(); if (save) toast("Punkt " + mv.n + " ligger kvar"); }
+}
+
+function tap(x, y){
+  const p = cur(); const f = fl(); const W = f.drawing.w, H = f.drawing.h;
+  // existing marker? (marker tip is at the point; the tag sits above it)
+  let hit = null, hitK = -1, best = 30;
+  for (const pt of f.points||[]) for (const pl of places(pt)) {
+    const sx = S.tx + pl.x*W*S.scale, sy = S.ty + pl.y*H*S.scale;
+    const d = Math.hypot(sx - x, sy - y); if (d < best) { best = d; hit = pt; hitK = pl.k; }
+  }
+  const px = (x - S.tx) / S.scale / W, py = (y - S.ty) / S.scale / H;
+  if (S.placing) { if (px < 0 || py < 0 || px > 1 || py > 1) return toast("Tryck inne på ritningen"); return addPlacement(px, py); }
+  if (S.moving) { // while moving: a tap anywhere on the drawing puts the point there
+    if (px < 0 || py < 0 || px > 1 || py > 1) return;
+    return setMovePos(px, py);
+  }
+  if (hit) {
+    const now = Date.now();
+    if (lastTap.n === hit.n && lastTap.k === hitK && now - lastTap.t < 350) { clearTimeout(lastTap.timer); lastTap = { n:null, t:0 }; return startMove(hit.n, hitK); }
+    clearTimeout(lastTap.timer);
+    const n = hit.n;
+    const k = hitK;
+    lastTap = { n, k, t: now, timer: setTimeout(() => { lastTap = { n:null, t:0 };
+      if (k >= 0) { if (S.panel) selectPoint(n, { scroll:true }); openSheet({ type:"sub", n, k }); }
+      else S.panel ? selectPoint(n, { scroll:true }) : openSheet({ type:"point", n }); }, 300) };
+    return;
+  }
+  if (px < 0 || py < 0 || px > 1 || py > 1) return toast("Tryck inne på ritningen");
+  S.pending = { n: ptCount(p) + 1, x: px, y: py };
+  stageEl.append(marker(S.pending.n, px, py, "pending"));
+  if (camFirst()) return cameraThen(files => openSheet({ type:"point", isNew:true, n:S.pending.n, files }));
+  openSheet({ type:"point", isNew:true, n:S.pending.n });
+}
+
+/* ---------- Side list: scroll through the floor's objects, the centred one is highlighted on the drawing ---------- */
+const sideW = () => { const s = vpEl && vpEl.querySelector(".side"); return s ? s.offsetWidth : 0; };
+function sidePanel(f){
+  const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
+  const list = h("div",{class:"side",id:"side","aria-label":"Objekt på " + f.name});
+  const head = h("div",{class:"sidehead"}, h("b",{}, "Objekt"), h("span",{}, f.name),
+    h("button",{class:"sideclose","aria-label":"Stäng listan",onclick:()=>toggleSide(false)},"✕"));
+  list.append(head);
+  if (!pts.length) { list.append(h("p",{class:"sideempty"},"Inga objekt på det här planet än. Tryck på ritningen för att lägga till.")); return list; }
+  list.append(h("div",{class:"spacer"}));
+  for (const pt of pts) {
+    const item = h("div",{class:"sitem","data-n":pt.n,onclick:e=>{ if (e.target.closest("button")) return; selectPoint(pt.n, { scroll:true, pan:true }); }},
+      h("div",{class:"stop"}, h("b",{style:"color:" + catColor(pt)}, pt.n), catOf(pt) ? h("span",{class:"cchip",style:"--cc:" + catColor(pt)}, catName(pt)) : null, pt.extra.length ? h("span",{class:"plc"}, "+" + pt.extra.length + " underpunkt" + (pt.extra.length === 1 ? "" : "er")) : null, pt.photos.length ? thumb(pt.photos[0], 120) : null),
+      h("p",{class: pt.desc ? "" : "none"}, pt.desc || "Ingen beskrivning"),
+      h("div",{class:"sactions"},
+        h("button",{class:"sbtn",onclick:()=>openSheet({type:"point",n:pt.n})},"Redigera"),
+        h("button",{class:"sbtn",onclick:()=>startMove(pt.n)},"Flytta"),
+        h("button",{class:"sbtn danger",onclick:e=>{
+          const box = e.target.closest(".sactions");
+          box.replaceChildren(h("span",{class:"sask"},"Ta bort punkt " + pt.n + "?"),
+            h("button",{class:"sbtn",onclick:()=>renderSideOnly()},"Behåll"),
+            h("button",{class:"sbtn danger solid",onclick:async()=>{ S.sel = null; await deletePoint(f.id, pt.n); }},"Ta bort"));
+        }},"Ta bort")));
+    list.append(item);
+  }
+  list.append(h("div",{class:"spacer"}));
+  let raf = 0;
+  list.addEventListener("scroll", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
+    if (list._programmatic) return;
+    const mid = list.scrollTop + list.clientHeight/2; let best = null, bd = 1e9;
+    list.querySelectorAll(".sitem").forEach(el => { const c = el.offsetTop + el.offsetHeight/2; const d = Math.abs(c - mid); if (d < bd) { bd = d; best = el; } });
+    if (best && +best.dataset.n !== S.sel) selectPoint(+best.dataset.n, { scroll:false, pan:true });
+  }); }, { passive:true });
+  return list;
+}
+function renderSideOnly(){ const old = vpEl && vpEl.querySelector(".side"); if (!old) return; const top = old.scrollTop; const nw = sidePanel(fl()); old.replaceWith(nw); nw.scrollTop = top; markSel(); }
+function toggleSide(on){
+  S.panel = on; try { localStorage.setItem("rp-side", on ? "1" : "0"); } catch(e){}
+  if (!on) S.sel = null;
+  S.fitted = false; render(); // refit the drawing to the space beside the list
+  if (on) { const f = fl(); const first = (f.points||[]).slice().sort((a,b)=>a.n-b.n)[0]; if (first) selectPoint(S.sel || first.n, { scroll:true, pan:true, instant:true }); }
+}
+function markSel(){
+  if (!stageEl) return;
+  stageEl.classList.toggle("dim", S.panel && S.sel != null);
+  stageEl.querySelectorAll(".mk").forEach(m => m.classList.toggle("sel", S.panel && +m.dataset.n === S.sel));
+  const side = vpEl && vpEl.querySelector(".side");
+  if (side) side.querySelectorAll(".sitem").forEach(el => el.classList.toggle("sel", +el.dataset.n === S.sel));
+}
+function selectPoint(n, o={}){
+  const f = fl(); const pt = (f.points||[]).find(x => x.n === n); if (!pt) return;
+  S.sel = n; markSel();
+  const side = vpEl.querySelector(".side");
+  if (o.scroll && side) {
+    const el = side.querySelector(`.sitem[data-n="${n}"]`);
+    if (el) { side._programmatic = true; side.scrollTo({ top: el.offsetTop + el.offsetHeight/2 - side.clientHeight/2, behavior: o.instant ? "auto" : "smooth" });
+      clearTimeout(side._pt); side._pt = setTimeout(()=>{ side._programmatic = false; }, o.instant ? 50 : 600); }
+  }
+  if (o.pan) panToPoint(pt, o.instant);
+}
+function panToPoint(pt, instant){
+  const f = fl(); const W = vpEl.clientWidth - sideW(), H = vpEl.clientHeight;
+  const sx = S.tx + pt.x*f.drawing.w*S.scale, sy = S.ty + pt.y*f.drawing.h*S.scale;
+  const m = 50;
+  if (sx > m && sx < W - m && sy > m + 30 && sy < H - m) return; // already in view
+  S.tx += W/2 - sx; S.ty += H/2 - sy;
+  if (!instant) { stageEl.classList.add("anim"); clearTimeout(stageEl._a); stageEl._a = setTimeout(()=>stageEl.classList.remove("anim"), 400); }
+  applyT();
+}
+
+/* ---------- Sheets ---------- */
+let sheetEl = null;
+function closeSheet(){ if (sheetEl) sheetEl.remove(); sheetEl = null; if (S.pending || S.pendingSub) { S.pending = null; S.pendingSub = null; render(); } }
+function openSheet(cfg){
+  if (sheetEl) sheetEl.remove();
+  const body = cfg.type === "point" ? pointSheet(cfg) : cfg.type === "list" ? listSheet() : cfg.type === "newplan" ? newPlanSheet(cfg) : cfg.type === "export" ? exportSheet() : cfg.type === "floor" ? floorSheet(cfg.fid) : cfg.type === "cats" ? catsSheet() : cfg.type === "sub" ? subSheet(cfg) : cfg.type === "ready" ? readySheet(cfg) : projectSheet();
+  sheetEl = h("div",{class:"scrim",onclick:e=>{ if(e.target===sheetEl) closeSheet(); }}, h("div",{class:"sheet",role:"dialog","aria-modal":"true"}, h("div",{class:"grab"}), body));
+  document.body.append(sheetEl);
+}
+const dropSheet = () => { if (sheetEl) sheetEl.remove(); sheetEl = null; };
+
+// Form to create or edit a category: name + colour
+function catForm(c, onSave, onCancel){
+  let color = c ? c.color : CAT_COLORS.find(x => !CATS.some(k => k.color === x)) || CAT_COLORS[0];
+  const name = h("input",{type:"text",id:"catname",maxlength:"30",placeholder:"Namn, t.ex. Dörr"}); name.value = c ? c.name : "";
+  const sw = h("div",{class:"swatches"});
+  const custom = h("input",{type:"color",class:"swcustom","aria-label":"Egen färg",oninput:e=>{ color = e.target.value; drawSw(); }});
+  const drawSw = () => { sw.replaceChildren(...CAT_COLORS.map(x => h("button",{class:"sw" + (x===color?" on":""),style:"--cc:" + x,"aria-label":"Färg " + x,onclick:()=>{ color = x; drawSw(); }})), custom); custom.value = color; preview.style.setProperty("--cc", color); };
+  const preview = h("span",{class:"cat on"}, "Förhandsvisning");
+  name.addEventListener("input", () => { preview.textContent = name.value.trim() || "Förhandsvisning"; });
+  const box = h("div",{class:"catform"},
+    h("input",{type:"hidden"}), name, sw, h("div",{class:"catrow"}, preview,
+      h("button",{class:"sbtn",onclick:onCancel},"Avbryt"),
+      h("button",{class:"sbtn ok",onclick:async()=>{ const nm = name.value.trim(); if (!nm) { name.focus(); return toast("Skriv ett namn på kategorin"); }
+        if (CATS.some(k => k.name.toLowerCase() === nm.toLowerCase() && (!c || k.id !== c.id))) return toast("Det finns redan en kategori som heter " + nm);
+        await onSave({ id: c ? c.id : "c" + uid(), name: nm, color }); }}, c ? "Spara" : "Lägg till")));
+  drawSw(); if (c) preview.textContent = c.name; setTimeout(() => name.focus(), 50);
+  return box;
+}
+async function saveCats(cats){
+  const np = { ...cur(), cats, updated: Date.now() }; replaceLocal(np); useCats(np);
+  try { await store.save(np); } catch(e){ toast("Kunde inte spara kategorierna"); }
+}
+function catsSheet(){
+  const p = cur(); useCats(p);
+  const list = h("div",{class:"catlist"});
+  const draw = () => {
+    useCats(cur());
+    const count = id => allPts(cur()).filter(pt => pt.cat === id).length;
+    list.replaceChildren(...(CATS.length ? CATS.map(c => {
+      const row = h("div",{class:"catitem"});
+      const show = () => row.replaceChildren(h("span",{class:"cat on",style:"--cc:" + c.color}, c.name), h("small",{}, pk(count(c.id))),
+        h("button",{class:"sbtn",onclick:()=>row.replaceChildren(catForm(c, async nc => { await saveCats(CATS.map(k => k.id === c.id ? nc : k)); draw(); }, show))},"Ändra"),
+        h("button",{class:"sbtn danger",onclick:()=>row.replaceChildren(h("span",{class:"sask"}, "Ta bort " + c.name + "? " + (count(c.id) ? pk(count(c.id)) + " blir utan kategori." : "")),
+          h("button",{class:"sbtn",onclick:show},"Behåll"),
+          h("button",{class:"sbtn danger solid",onclick:async()=>{
+            let np = { ...cur(), cats: CATS.filter(k => k.id !== c.id), updated: Date.now() };
+            np = { ...np, floors: np.floors.map(f => ({ ...f, points: f.points.map(pt => pt.cat === c.id ? { ...pt, cat: null } : pt) })) };
+            replaceLocal(np); useCats(np); try { await store.save(np); } catch(e){ toast("Kunde inte spara"); } draw(); render(); }},"Ta bort"))},"Ta bort"));
+      show(); return row; }) : [h("p",{class:"muted",style:"margin:0"},"Inga kategorier än.")]));
+  };
+  draw();
+  const addWrap = h("div",{});
+  const addBtn = h("button",{class:"btn ghost",onclick:()=>addWrap.replaceChildren(catForm(null, async nc => { await saveCats([...CATS, nc]); draw(); addWrap.replaceChildren(addBtn); render(); }, () => addWrap.replaceChildren(addBtn)))},"+ Ny kategori");
+  addWrap.append(addBtn);
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{},"Kategorier"), h("span",{class:"count"}, p.name)),
+    h("p",{class:"muted",style:"margin:0;line-height:1.4"},"Kategorierna gäller det här projektet. Nya projekt får samma kategorier som det senast använda."),
+    list, addWrap,
+    h("button",{class:"btn ghost",onclick:()=>{ dropSheet(); render(); }},"Klar"));
+}
+
+// Suggestions while typing a description: earlier descriptions in the same project that match what has
+// been typed so far. They only appear below the field; typing is never interrupted and nothing is filled in
+// unless a suggestion is tapped.
+const norm = t => t.toLowerCase().normalize("NFC").replace(/\s+/g, " ").trim();
+function descSuggest(input, p, own){
+  const box = h("div",{class:"sugg","aria-live":"polite"});
+  const counts = new Map(); // description -> { text, n, last }
+  for (const pt of allPts(p)) { const d = (pt.desc || "").trim(); if (!d) continue; const k = norm(d);
+    const c = counts.get(k) || { text: d, n: 0, last: 0 }; c.n++; c.last = Math.max(c.last, pt.t || 0); counts.set(k, c); }
+  const all = [...counts.values()];
+  const update = () => {
+    const q = norm(input.value);
+    if (q.length < 2 || !all.length) return box.replaceChildren();
+    const toks = q.split(" ");
+    const hits = [];
+    for (const c of all) {
+      const t = norm(c.text); if (t === q) continue;
+      const words = t.split(/[\s,.;:()\/-]+/);
+      let score = 0, ok = true;
+      for (const tok of toks) {
+        if (words.some(w => w.startsWith(tok))) score += 2; else if (t.includes(tok)) score += 1; else { ok = false; break; }
+      }
+      if (!ok) continue;
+      if (t.startsWith(q)) score += 5;
+      hits.push({ c, score });
+    }
+    hits.sort((a,b) => b.score - a.score || b.c.n - a.c.n || b.c.last - a.c.last);
+    box.replaceChildren(...hits.slice(0, 4).map(({ c }) => h("button",{type:"button",class:"schip",
+      onpointerdown: e => e.preventDefault(), // keeps the keyboard open
+      onclick: () => { input.value = c.text; box.replaceChildren(); input.focus(); const L = input.value.length; try { input.setSelectionRange(L, L); } catch(e){} }},
+      c.text, c.n > 1 ? h("small",{}, " ×" + c.n) : null)));
+  };
+  input.addEventListener("input", update);
+  return box;
+}
+
+function pointSheet(cfg){
+  const p = cur(); const f = fl(); const existing = (f.points||[]).find(x => x.n === cfg.n);
+  const pick = photoPicker(existing ? existing.photos : [], cfg.files);
+  useCats(p);
+  let cat = existing ? existing.cat || null : (CATS.some(c => c.id === S.lastCat) ? S.lastCat : null);
+  let prio = existing ? existing.prio || null : (S.lastPrio || null);
+  const prioBox = h("div",{class:"prio",role:"radiogroup","aria-label":"Prioritering"});
+  const drawPrio = () => prioBox.replaceChildren(...[1,2,3].map(v => h("button",{class:"pbtn" + (prio===v?" on":""),role:"radio","aria-checked":prio===v?"true":"false",onclick:()=>{ prio = prio===v ? null : v; drawPrio(); }}, String(v))),
+    h("span",{class:"muted"}, prio ? "Tryck igen för att ta bort" : "Ingen prioritering vald"));
+  drawPrio();
+  const chips = h("div",{class:"cats"});
+  const badge = h("span",{class:"bigtag"}, String(cfg.n));
+  const tint = () => { const col = (CATS.find(c => c.id === cat) || {}).color || NO_CAT_COLOR; badge.style.background = col;
+    const pm = stageEl && stageEl.querySelector(".mk.pending"); if (pm) pm.style.setProperty("--mc", col); };
+  const drawChips = () => chips.replaceChildren(
+    ...CATS.map(c => h("button",{class:"cat" + (cat===c.id?" on":""),style:"--cc:" + c.color,"aria-pressed":cat===c.id?"true":"false",onclick:()=>{ cat = cat===c.id ? null : c.id; drawChips(); tint(); }}, c.name)),
+    h("button",{class:"cat add",onclick:()=>chips.replaceChildren(catForm(null, async nc => { await saveCats([...CATS, nc]); cat = nc.id; drawChips(); tint(); }, drawChips))}, "+ Ny kategori"));
+  drawChips(); tint();
+  const desc = h("textarea",{id:"desc",placeholder:"Kort beskrivning, t.ex. Dörr D12, saknar dörrstängare",maxlength:"300"});
+  desc.value = existing ? existing.desc || "" : "";
+  const sugg = descSuggest(desc, p, existing ? existing.desc : null);
+  const saveBtn = h("button",{class:"btn primary",onclick:async()=>{
+    toAlbum(pick.camFiles(), p.name + " punkt " + cfg.n);
+    saveBtn.disabled = true; const done = busy("Sparar…");
+    try {
+      const { photos, removed, fresh } = await pick.commit(done);
+      const basePt = existing || S.pending; const ptId = (existing && existing.id) || uid();
+      const np = withFloor(cur(), f.id, ff => {
+        const pts = (ff.points||[]).filter(x => x.n !== cfg.n);
+        pts.push({ id: ptId, n: cfg.n, x: basePt.x, y: basePt.y, extra: existing ? existing.extra : [], photos, cat: cat || null, prio: prio || null, desc: desc.value.trim(), t: Date.now() });
+        return { points: pts.sort((a,b)=>a.n-b.n) };
+      });
+      replaceLocal(np); S.pending = null; S.lastCat = cat; S.lastPrio = prio; if (S.panel) S.sel = cfg.n;
+      dropSheet(); render();
+      fresh.forEach(t => queuePhoto(t, np.id, ptId, null));
+      await store.save(np);
+      removed.forEach(ph => store.dropImage(ph));
+      toast("Punkt " + cfg.n + " sparad");
+    } catch(e) { toast("Kunde inte spara: " + (e.code || e.message || "okänt fel")); saveBtn.disabled = false; }
+    finally { done(); }
+  }}, cfg.isNew ? "Spara punkt " + cfg.n : "Spara");
+  const delWrap = h("div",{});
+  if (!cfg.isNew) {
+    const ask = h("button",{class:"btn danger",onclick:()=>{
+      delWrap.replaceChildren(h("p",{style:"margin:0 0 8px;color:var(--muted);font-size:14px"},"Ta bort punkt " + cfg.n + "? Punkterna efter får nya nummer."),
+        h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:()=>delWrap.replaceChildren(ask)},"Behåll"),
+          h("button",{class:"btn danger",style:"border-color:var(--danger)",onclick:async()=>{
+            await deletePoint(f.id, cfg.n);
+          }},"Ta bort")));
+    }},"Ta bort punkt");
+    delWrap.append(ask);
+  }
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, badge, h("h2",{}, (cfg.isNew ? "Ny punkt" : "Punkt " + cfg.n)), h("span",{class:"count"}, f.name)),
+    pick.grid, pick.buttons,
+    h("div",{class:"field"}, h("label",{},"Prioritering"), prioBox),
+    h("div",{class:"field"}, h("label",{},"Kategori"), chips, !CATS.length ? h("small",{class:"muted"},"Skapa egna kategorier med namn och färg, t.ex. Dörr eller Skyltning.") : null),
+    h("div",{class:"field"}, h("label",{for:"desc"},"Beskrivning"), desc, sugg),
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"), saveBtn),
+    !cfg.isNew ? h("div",{class:"row"},
+      h("button",{class:"btn ghost",onclick:()=>startMove(cfg.n)},"Flytta punkten"),
+      h("button",{class:"btn ghost",onclick:()=>startPlacing(cfg.n)},"+ Underpunkt")) : null,
+    !cfg.isNew && existing.extra.length ? h("div",{class:"subs"}, h("small",{class:"muted"},"Underpunkter:"),
+      existing.extra.map((e, i) => h("button",{class:"subchip",style:"--cc:" + catColor(existing),onclick:()=>openSheet({type:"sub", n: cfg.n, k: i})},
+        subLabel(cfg.n, i), e.photos.length ? h("small",{}, "· " + e.photos.length + " foto") : null))) : null,
+    delWrap);
+}
+
+function listSheet(){
+  const p = cur(); const multi = p.floors.length > 1;
+  const pts = allPts(p).sort((a,b)=>a.n-b.n);
+  const row = pt => {
+    const wrap = h("div",{class:"ptrow"});
+    const del = h("button",{class:"trash","aria-label":"Ta bort punkt " + pt.n,onclick:()=>{
+      wrap.replaceChildren(h("div",{class:"ptconfirm"},
+        h("span",{}, "Ta bort punkt " + pt.n + "?"),
+        h("button",{class:"btn ghost",onclick:()=>{ dropSheet(); openSheet({type:"list"}); }},"Behåll"),
+        h("button",{class:"btn danger",style:"border-color:var(--danger)",onclick:async()=>{ await deletePoint(pt.floorId, pt.n); openSheet({type:"list"}); }},"Ta bort")));
+    }}, "✕");
+    wrap.append(h("button",{class:"pt",onclick:()=>{
+        if (pt.floorId !== S.floor) { S.floor = pt.floorId; S.fitted = false; dropSheet(); render(); }
+        focusPoint(pt); openSheet({type:"point",n:pt.n}); }},
+      h("span",{class:"n"}, pt.n),
+      pt.photos.length ? thumb(pt.photos[0], 140) : h("div",{class:"ph"}),
+      h("p",{class: pt.desc ? "" : "none"}, (multi || catOf(pt)) ? h("small",{class:"fl"}, [pt.floorName && multi ? pt.floorName : null, catName(pt) || null].filter(Boolean).join(" · ")) : null, pt.desc || "Ingen beskrivning")), del);
+    return wrap;
+  };
+  return h("div",{style:"display:grid;gap:10px"},
+    h("div",{class:"shead"}, h("h2",{},"Punkter"), h("span",{class:"count"}, pts.length + " st")),
+    pts.length ? h("div",{class:"plist2"}, pts.map(row))
+    : h("p",{style:"color:var(--muted);margin:0"},"Inga punkter än. Tryck på ritningen för att lägga till punkt 1."),
+    pts.length ? h("p",{style:"margin:0;color:var(--muted);font-size:13px"},"Tryck ✕ för att ta bort en punkt. Punkterna efter får nya nummer.") : null,
+    h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"));
+}
+async function deletePoint(fid, n){
+  const p = cur(); const f = p.floors.find(x => x.id === fid); const old = (f.points||[]).find(x => x.n === n);
+  const np = renumber(withFloor(p, fid, ff => ({ points: (ff.points||[]).filter(x => x.n !== n) })));
+  replaceLocal(np); if (old) allPhotos(old).forEach(ph => store.dropImage(ph));
+  try { await store.save(np); toast("Punkt " + n + " borttagen"); } catch(e){ toast("Kunde inte spara ändringen"); }
+  dropSheet(); render();
+}
+function focusPoint(pt){
+  const f = fl(); if (!vpEl) return;
+  const W = vpEl.clientWidth, H = vpEl.clientHeight;
+  S.tx = W/2 - pt.x*f.drawing.w*S.scale; S.ty = H/2.6 - pt.y*f.drawing.h*S.scale; applyT();
+}
+
+function confirmRow(wrap, back, text, label, action){
+  wrap.replaceChildren(h("p",{style:"margin:0 0 8px;color:var(--muted);font-size:14px"}, text),
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:()=>wrap.replaceChildren(back)},"Behåll"),
+      h("button",{class:"btn danger",style:"border-color:var(--danger)",onclick:action}, label)));
+}
+async function saveProject(np, msg){ replaceLocal(np); try { await store.save(np); if (msg) toast(msg); } catch(e){ toast("Kunde inte spara"); } dropSheet(); render(); }
+
+// One floor: rename, reorder, delete
+function floorSheet(fid){
+  const p = cur(); const f = p.floors.find(x => x.id === fid) || fl();
+  const idx = p.floors.findIndex(x=>x.id===f.id), only = p.floors.length === 1;
+  const fname = h("input",{type:"text",id:"fname"}); fname.value = f.name;
+  const move = d => { const j = idx + d; if (j<0 || j>=p.floors.length) return;
+    const floors = [...p.floors]; [floors[idx], floors[j]] = [floors[j], floors[idx]]; saveProject({ ...p, floors, updated: Date.now() }); };
+  const wrap = h("div",{});
+  const n = (f.points||[]).length;
+  const del = h("button",{class:"btn danger",onclick:()=>confirmRow(wrap, del,
+    only ? "Det här är projektets enda våningsplan, så hela projektet tas bort med dess " + n + " punkter."
+         : f.name + " och dess " + n + " punkter tas bort. Punkterna på andra plan får nya nummer.",
+    only ? "Ta bort projektet" : "Ta bort " + f.name, async()=>{
+      const done = busy("Tar bort…");
+      try {
+        if (only) { await store.remove(p); S.projects = S.projects.filter(x=>x.id!==p.id); S.view = "list"; dropSheet(); render(); toast("Projektet är borttaget"); return; }
+        [f.drawing, f.drawing.pdf, ...(f.points||[]).flatMap(allPhotos)].filter(Boolean).forEach(i => store.dropImage(i));
+        const np = renumber({ ...p, floors: p.floors.filter(x => x.id !== f.id), updated: Date.now() });
+        S.floor = np.floors[Math.max(0, idx-1)].id; S.fitted = false;
+        await saveProject(np, f.name + " är borttaget");
+      } catch(e){ toast("Kunde inte ta bort"); } finally { done(); }
+    })}, "Ta bort våningsplanet");
+  wrap.append(del);
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{}, f.name), h("span",{class:"count"}, n + " pkt")),
+    h("label",{class:"btn ghost",for:"planInput",role:"button",tabindex:"0",onclick:()=>{ S.floor = f.id; resetPlanInput("replace"); }},"Byt ritning för " + f.name),
+    h("div",{class:"field"}, h("label",{for:"fname"},"Namn"), fname),
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"),
+      h("button",{class:"btn primary",onclick:()=>saveProject(withFloor(p, f.id, () => ({ name: fname.value.trim() || f.name })), "Namnet är sparat")},"Spara namn")),
+    !only ? h("div",{class:"row"},
+      h("button",{class:"btn ghost",disabled:idx===0,onclick:()=>move(-1)},"← Flytta vänster"),
+      h("button",{class:"btn ghost",disabled:idx===p.floors.length-1,onclick:()=>move(1)},"Flytta höger →")) : null,
+    wrap);
+}
+
+// Project: rename, see/manage floors, delete
+function projectSheet(){
+  const p = cur();
+  const name = h("input",{type:"text",id:"pname"}); name.value = p.name;
+  const infoE = infoFields(p.info || { inspector: "" });
+  const pWrap = h("div",{});
+  const pDel = h("button",{class:"btn danger",onclick:()=>confirmRow(pWrap, pDel,
+    "Projektet med " + p.floors.length + " våningsplan och " + ptCount(p) + " punkter tas bort för gott.", "Ta bort projektet", async()=>{
+      const done = busy("Tar bort…");
+      try { await store.remove(p); S.projects = S.projects.filter(x=>x.id!==p.id); S.view="list"; dropSheet(); render(); toast("Projektet är borttaget"); }
+      catch(e){ toast("Kunde inte ta bort"); } finally { done(); }
+    })}, "Ta bort projektet");
+  pWrap.append(pDel);
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{},"Projekt")),
+    h("div",{class:"field"}, h("label",{for:"pname"},"Uppdragsnamn"), name),
+    infoE.els,
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"),
+      h("button",{class:"btn primary",onclick:()=>saveProject({ ...p, name: name.value.trim() || p.name, info: infoE.read(), updated: Date.now() }, "Uppgifterna är sparade")},"Spara uppgifter")),
+    h("div",{class:"field"}, h("label",{},"Våningsplan"),
+      h("div",{class:"flist"}, p.floors.map(f => h("button",{class:"frow",onclick:()=>openSheet({type:"floor",fid:f.id})},
+        h("b",{}, f.name), h("span",{}, (f.points||[]).length + " pkt"), h("i",{}, "Ändra eller ta bort ›"))))),
+    h("button",{class:"btn ghost",onclick:()=>openSheet({type:"cats"})},"Kategorier (" + (p.cats||[]).length + ")"),
+    h("div",{class:"field"}, h("label",{},"Export"),
+      ...[["cat","Ta med kategorier (färger på numren och färgförklaring)"], ["prio","Ta med prioritering (kolumn i tabellen)"]].map(([key, label]) =>
+        h("label",{class:"check"}, h("input",{type:"checkbox",id:"exp-" + key,checked:expOpt(p)[key],onchange:async e=>{
+          const np = { ...cur(), exp: { ...(cur().exp || {}), [key]: e.target.checked }, updated: Date.now() }; replaceLocal(np);
+          try { await store.save(np); toast("Exportinställningen är sparad"); } catch(err){ toast("Kunde inte spara"); } }}), label))),
+    h("label",{class:"check"}, h("input",{type:"checkbox",id:"camfirst",checked:camFirst(),onchange:e=>{ try { localStorage.setItem("rp-cam", e.target.checked ? "1" : "0"); } catch(err){} }}),
+      "Öppna kameran direkt när jag sätter en ny punkt"),
+    IS_APP ? h("label",{class:"check"}, h("input",{type:"checkbox",id:"album",checked:albumOn(),onchange:e=>{ try { localStorage.setItem("rp-album", e.target.checked ? "1" : "0"); } catch(err){} }}),
+      "Spara även nya foton i telefonens bildalbum") : null,
+    downloads ? h("button",{class:"btn ghost",onclick:()=>backupProjects([p], p.name)},"Säkerhetskopiera projektet") : null,
+    pWrap);
+}
+
+/* ---------- New project / new floor ---------- */
+let planMode = "project";
+function resetPlanInput(mode){ planMode = mode; $("#planInput").value = ""; }
+$("#planInput").addEventListener("change", async e => {
+  const file = e.target.files[0]; if (!file) return;
+  let pdf = null;
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+    try { pdf = await openPdf(file); } catch(err){ return toast("PDF:en gick inte att öppna"); }
+  }
+  openSheet({ type:"newplan", file, pdf, mode: planMode });
+});
+function newPlanSheet(cfg){
+  const file = cfg.file, pdf = cfg.pdf, pages = pdf ? pdf.numPages : 1, isProject = cfg.mode === "project";
+  const p = isProject ? null : cur();
+  const startNo = isProject ? 1 : p.floors.length + 1;
+  const name = h("input",{type:"text",id:"newname"}); name.value = isProject ? file.name.replace(/\.[^.]+$/, "") : "Plan " + startNo;
+  const fname = h("input",{type:"text",id:"newfloor"}); fname.value = "Plan 1";
+  const page = h("input",{type:"text",id:"pageno",inputmode:"numeric"}); page.value = "1";
+  let allPages = false;
+  const infoF = infoFields({});
+  const pageField = h("div",{class:"field"}, h("label",{for:"pageno"},"Sida (1–" + pages + ")"), page);
+  const allBox = h("label",{class:"check"}, h("input",{type:"checkbox",id:"allpages",onchange:e=>{ allPages = e.target.checked; pageField.hidden = allPages; }}),
+    "Lägg till alla " + pages + " sidor som egna våningsplan");
+  if (cfg.mode === "replace") return replacePlanSheet(cfg);
+  const go = h("button",{class:"btn primary",onclick:async()=>{
+    go.disabled = true; const done = busy(pdf ? "Läser in PDF…" : "Laddar upp ritning…");
+    try {
+      const list = pdf ? (allPages ? Array.from({length:pages},(_,i)=>i+1) : [parseInt(page.value,10)||1]) : [null];
+      const floors = [];
+      for (let i = 0; i < list.length; i++) {
+        if (list.length > 1) done.set("Läser in sida " + (i+1) + " av " + list.length + "…");
+        const img = pdf ? await pdfPageImage(pdf, list[i]) : await shrink(file, 4000);
+        const stored = await store.putImage(img.blob);
+        let pdfRef = null; if (pdf) { const one = await singlePagePdf(file, list[i]); pdfRef = { pdf: await store.putImage(one.blob), page: one.page }; }
+        const nm = list.length > 1 ? "Plan " + (startNo + i) : (isProject ? (fname.value.trim() || "Plan 1") : (name.value.trim() || "Plan " + startNo));
+        floors.push({ id: uid(), name: nm, drawing: { ...stored, w: img.w, h: img.h, ...(pdfRef || {}) }, points: [] });
+      }
+      let np;
+      if (isProject) { np = { id: uid(), name: name.value.trim() || "Projekt", info: infoF.read(), created: Date.now(), updated: Date.now(), cats: lastCats(), floors }; S.projects.push(np); }
+      else { np = { ...cur(), floors: [...cur().floors, ...floors], updated: Date.now() }; replaceLocal(np); }
+      await store.save(np);
+      dropSheet();
+      S.current = np.id; S.view = "plan"; S.floor = floors[0].id; S.fitted = false; S.pending = null; render();
+      toast(floors.length > 1 ? floors.length + " våningsplan tillagda" : floors[0].name + " tillagt");
+    } catch(err){ toast("Ritningen kunde inte sparas: " + (err.code || err.message || "okänt fel")); go.disabled = false; }
+    finally { done(); }
+  }}, isProject ? "Skapa projekt" : "Lägg till våningsplan");
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{}, isProject ? "Nytt projekt" : "Nytt våningsplan")),
+    h("div",{class:"field"}, h("label",{for:"newname"}, isProject ? "Uppdragsnamn" : "Namn på våningsplanet"), name),
+    isProject ? infoF.els : null,
+    isProject && !(pdf && pages > 1) ? h("div",{class:"field"}, h("label",{for:"newfloor"},"Första våningsplanet"), fname) : null,
+    pdf && pages > 1 ? [allBox, pageField] : null,
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"), go));
+}
+function replacePlanSheet(cfg){
+  const file = cfg.file, pdf = cfg.pdf, pages = pdf ? pdf.numPages : 1;
+  const p = cur(); const f = fl();
+  const page = h("input",{type:"text",id:"pageno",inputmode:"numeric"}); page.value = "1";
+  const go = h("button",{class:"btn primary",onclick:async()=>{
+    go.disabled = true; const done = busy(pdf ? "Läser in PDF…" : "Laddar upp ritning…");
+    try {
+      const pno = parseInt(page.value,10)||1;
+      const img = pdf ? await pdfPageImage(pdf, pno) : await shrink(file, 4000);
+      const stored = await store.putImage(img.blob);
+      let pdfRef = null; if (pdf) { const one = await singlePagePdf(file, pno); pdfRef = { pdf: await store.putImage(one.blob), page: one.page }; }
+      const old = f.drawing;
+      const np = withFloor(cur(), f.id, () => ({ drawing: { ...stored, w: img.w, h: img.h, ...(pdfRef || {}) } }));
+      replaceLocal(np); await store.save(np); store.dropImage(old); if (old.pdf) store.dropImage(old.pdf);
+      dropSheet(); S.fitted = false; render(); toast("Ritningen för " + f.name + " är bytt");
+    } catch(err){ toast("Ritningen kunde inte bytas: " + (err.code || err.message || "okänt fel")); go.disabled = false; }
+    finally { done(); }
+  }}, "Byt ritning");
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{}, "Byt ritning för " + f.name)),
+    h("p",{style:"margin:0;color:var(--muted);line-height:1.4"}, (f.points||[]).length
+      ? "Punkterna ligger kvar på samma relativa plats. Använd en ritning med samma utsnitt, annars hamnar de fel."
+      : "Den nya ritningen ersätter den gamla."),
+    pdf && pages > 1 ? h("div",{class:"field"}, h("label",{for:"pageno"},"Sida (1–" + pages + ")"), page) : null,
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"), go));
+}
+function openProject(id){ S.current = id; const p = cur(); S.floor = p && p.floors[0] ? p.floors[0].id : null; S.view = "plan"; S.fitted = false; S.pending = null; render(); }
+function replaceLocal(np){ S.projects = S.projects.map(x => x.id === np.id ? np : x); }
+
+/* ---------- Export ---------- */
+// Table columns (mm): Nr | Beskrivning | Läge på ritning | Foto  — total 186 mm on A4 portrait with 12 mm margins
+// Table columns (mm). Without priority the description gets the space of the Prio column.
+let COLS = [], CI = {};
+function setCols(showPrio){
+  COLS = showPrio
+    ? [{k:"nr",t:"Nr.",w:13}, {k:"prio",t:"Prio",w:11}, {k:"desc",t:"Beskrivning",w:46}, {k:"loc",t:"Läge på ritning",w:58}, {k:"photo",t:"Foto",w:58}]
+    : [{k:"nr",t:"Nr.",w:13}, {k:"desc",t:"Beskrivning",w:57}, {k:"loc",t:"Läge på ritning",w:58}, {k:"photo",t:"Foto",w:58}];
+  CI = {}; COLS.forEach((c, i) => { CI[c.k] = i; });
+}
+setCols(true);
+// Export settings per project (under Mer): include categories (colours, legend) and priority (table column)
+const expOpt = p => ({ cat: !(p && p.exp && p.exp.cat === false), prio: !(p && p.exp && p.exp.prio === false) });
+const ROW_H = 47, CELL_PAD = 2; // 5 objects per A4 page
+const CROP_W_MM = COLS[CI.loc].w - 2*CELL_PAD, CROP_H_MM = ROW_H - 2*CELL_PAD;
+const CROP_SPAN = 0.30; // share of the drawing's longest side shown in each location image
+
+function fileBase(p){ return (p.name.replace(/[^\wåäöÅÄÖ\- ]+/g,"").trim() || "ritning"); }
+function drawTag(ctx, x, y, r, n, color){
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fillStyle = color || NO_CAT_COLOR; ctx.fill();
+  ctx.lineWidth = r*0.2; ctx.strokeStyle = "#fff"; ctx.stroke();
+  const L_ = String(n).length; ctx.font = `600 ${Math.round(r*(L_<=2?1.05:L_===3?0.8:0.64))}px monospace`; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle = "#fff"; ctx.fillText(String(n), x, y+1);
+}
+function jpeg(canvas, q){ return { data: canvas.toDataURL("image/jpeg", q), w: canvas.width, h: canvas.height }; }
+
+// Overview tags: a small dot marks the exact spot; the number sits in a large label nearby,
+// moved aside when labels would overlap, with a leader line back to the dot.
+// Places the number labels of an overview: a label sits on its spot when there is room; where it is crowded
+// it moves aside and gets a leader line back to a dot on the spot. Coordinates are in the units of W × H.
+function layoutTags(W, H, pts){
+  const r = Math.max(W, H)/60;                         // label radius
+  const dot = Math.max(r*0.22, r*0.26);
+  const placed = [];
+  const anchors = pts.map(pt => ({ x: pt.x*W, y: pt.y*H }));
+  const clear = (x, y, self) => x > r+2 && y > r+2 && x < W-r-2 && y < H-r-2 &&
+    placed.every(o => Math.hypot(o.x-x, o.y-y) > o.rad + r + r*0.12) &&
+    anchors.every((a, j) => j === self || Math.hypot(a.x-x, a.y-y) > r + dot + r*0.15);
+  const dirs = [-90, -45, -135, 0, 180, 45, 135, 90].map(d => d*Math.PI/180);
+  const labels = pts.map((pt, i) => {
+    const a = anchors[i]; let pos = null;
+    if (clear(a.x, a.y, i)) { placed.push({ x: a.x, y: a.y, rad: r }); return { n: pt.n, a, pos: { x: a.x, y: a.y }, direct: true, color: catColor(pt) }; }
+    for (const ring of [2.5, 3.4, 4.4, 5.6, 7, 9]) {
+      for (const d of dirs) { const x = a.x + Math.cos(d)*r*ring, y = a.y + Math.sin(d)*r*ring; if (clear(x, y)) { pos = {x, y}; break; } }
+      if (pos) break;
+      for (let k = 0; k < 24 && !pos; k++) { const d = k*Math.PI/12; const x = a.x + Math.cos(d)*r*ring, y = a.y + Math.sin(d)*r*ring; if (clear(x, y)) pos = {x, y}; }
+      if (pos) break;
+    }
+    if (!pos) pos = { x: Math.min(Math.max(a.x, r+2), W-r-2), y: Math.min(Math.max(a.y - r*1.9, r+2), H-r-2) };
+    placed.push({ x: pos.x, y: pos.y, rad: r });
+    return { n: pt.n, a, pos, color: catColor(pt) };
+  });
+  return { r, dot, labels };
+}
+const labelScale = n => { const L = String(n).length; return L <= 2 ? 1.15 : L === 3 ? 0.85 : 0.68; };
+function drawOverviewTags(ctx, W, H, pts){
+  const { r, dot, labels } = layoutTags(W, H, pts);
+  for (const L of labels) {
+    if (L.direct) continue;
+    const dx = L.pos.x - L.a.x, dy = L.pos.y - L.a.y, len = Math.hypot(dx, dy) || 1;
+    ctx.beginPath(); ctx.moveTo(L.a.x, L.a.y); ctx.lineTo(L.pos.x - dx/len*r, L.pos.y - dy/len*r);
+    ctx.lineWidth = Math.max(4, r*0.2); ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.lineWidth = Math.max(2.5, r*0.11); ctx.strokeStyle = "#1d2321"; ctx.stroke();
+  }
+  for (const L of labels) {
+    if (L.direct) continue;
+    ctx.beginPath(); ctx.arc(L.a.x, L.a.y, dot, 0, Math.PI*2);
+    ctx.fillStyle = L.color; ctx.fill(); ctx.lineWidth = dot*0.5; ctx.strokeStyle = "#fff"; ctx.stroke();
+  }
+  for (const L of labels) {
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = r*0.3;
+    ctx.beginPath(); ctx.arc(L.pos.x, L.pos.y, r, 0, Math.PI*2); ctx.fillStyle = L.color; ctx.fill(); ctx.restore();
+    ctx.lineWidth = r*0.14; ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.font = `700 ${Math.round(r*labelScale(L.n))}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff"; ctx.fillText(String(L.n), L.pos.x, L.pos.y + r*0.05);
+  }
+}
+
+/* --- The drawing as PDF: kept as the original file, used for sharp location images and a vector overview --- */
+const PDF_BYTES = new Map(), PDF_DOCS = new Map();
+const pdfKey = d => thumbKey(d.pdf) || "?";
+async function pdfBytesFor(d){
+  const k = pdfKey(d);
+  if (!PDF_BYTES.has(k)) PDF_BYTES.set(k, (async () => {
+    let blob = imgBlob(d.pdf); if (!blob) { const r = await fetch(src(d.pdf)); if (!r.ok) throw new Error("PDF:en kunde inte hämtas"); blob = await r.blob(); }
+    return new Uint8Array(await blob.arrayBuffer());
+  })());
+  return PDF_BYTES.get(k);
+}
+async function pdfPageFor(d){
+  const k = pdfKey(d);
+  if (!PDF_DOCS.has(k)) PDF_DOCS.set(k, (async () => window.pdfjsLib.getDocument({ data: (await pdfBytesFor(d)).slice() }).promise)());
+  return (await PDF_DOCS.get(k)).getPage(d.page || 1);
+}
+// Renders a part of the drawing (fractions of the page as shown) straight from the PDF into a canvas
+async function renderPdfRegion(d, fx, fy, fw, fh, outW, outH){
+  const page = await pdfPageFor(d); const base = page.getViewport({ scale: 1 });
+  const scale = outW / (fw * base.width);
+  const vp = page.getViewport({ scale, offsetX: -fx*base.width*scale, offsetY: -fy*base.height*scale });
+  const c = document.createElement("canvas"); c.width = outW; c.height = outH;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, outW, outH);
+  await page.render({ canvasContext: x, canvas: c, viewport: vp }).promise;
+  return c;
+}
+// Whole page at a resolution that stays within what phones allow for one canvas (about 16 megapixels)
+async function renderPdfWhole(d, longSide){
+  const page = await pdfPageFor(d); const base = page.getViewport({ scale: 1 });
+  let s = longSide / Math.max(base.width, base.height);
+  const maxArea = 15.5e6; if (base.width*s * base.height*s > maxArea) s = Math.sqrt(maxArea / (base.width*base.height));
+  const vp = page.getViewport({ scale: s });
+  const c = document.createElement("canvas"); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: x, canvas: c, viewport: vp }).promise;
+  return c;
+}
+const hasPdf = d => !!(d && d.pdf && window.pdfjsLib);
+
+// Builds every image the report needs, shared by the PDF and Word writers.
+async function buildFloor(f){
+  const d = f.drawing; let base = null, fromPdf = false;
+  if (hasPdf(d)) { try { base = await renderPdfWhole(d, 4600); fromPdf = true; } catch(e) { base = null; } }
+  if (!base) {
+    const plan = await loadImg(src(d));
+    base = document.createElement("canvas"); const k = Math.min(1, 3200/Math.max(plan.naturalWidth, plan.naturalHeight));
+    base.width = Math.round(plan.naturalWidth*k); base.height = Math.round(plan.naturalHeight*k);
+    const bctx = base.getContext("2d"); bctx.fillStyle="#fff"; bctx.fillRect(0,0,base.width,base.height); bctx.drawImage(plan,0,0,base.width,base.height);
+  }
+  const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
+  const tags = pts.flatMap(pt => places(pt).map(pl => ({ ...pt, n: pl.label, x: pl.x, y: pl.y })));
+  const used = CATS.filter(c => pts.some(pt => pt.cat === c.id));
+
+  // raster overview with all numbers (used in Word, and in the PDF when the drawing is not a PDF)
+  const lh = used.length ? Math.round(Math.max(base.width, base.height) * 0.045) : 0;
+  const ov = document.createElement("canvas"); ov.width = base.width; ov.height = base.height + lh;
+  const octx = ov.getContext("2d"); octx.fillStyle = "#fff"; octx.fillRect(0,0,ov.width,ov.height); octx.drawImage(base,0,0);
+  drawOverviewTags(octx, base.width, base.height, tags);
+  if (used.length) {
+    let lx = lh*0.4; const ly = base.height + lh/2, rr2 = lh*0.22;
+    octx.font = `600 ${Math.round(lh*0.36)}px sans-serif`; octx.textBaseline = "middle"; octx.textAlign = "left";
+    for (const c of used) { octx.beginPath(); octx.arc(lx + rr2, ly, rr2, 0, Math.PI*2); octx.fillStyle = c.color; octx.fill();
+      octx.fillStyle = "#1d2321"; octx.fillText(c.name, lx + rr2*2.6, ly); lx += rr2*2.6 + octx.measureText(c.name).width + lh*0.6; }
+  }
+  const overview = jpeg(ov, 0.9);
+
+  // location images: cut from the PDF itself when there is one, otherwise from the picture
+  const cropPx = fromPdf ? 1200 : 900, cropPy = Math.round(cropPx*CROP_H_MM/CROP_W_MM);
+  const items = pts.flatMap(pt => places(pt).map(item => ({ pt, item })));
+  const rows = items.map(({ pt, item }) => ({ n: item.label, key: pt.n*1000 + item.k + 1, prio: pt.prio || null, desc: pt.desc || "", floorName: f.name,
+    cat: catName(pt), catColor: catColor(pt), nPhotos: item.photos.length, crop: null, photo: item.photos.length ? item.photos : null, hadPhoto: item.photos.length > 0, _pt: pt, _item: item }));
+  await inParallel(rows, fromPdf ? 3 : 6, async row => {
+    const { _pt: pt, _item: item } = row;
+    const sw = Math.max(base.width, base.height) * CROP_SPAN, sh = sw*CROP_H_MM/CROP_W_MM;
+    const sx = item.x*base.width - sw/2, sy = item.y*base.height - sh/2;
+    let cc = null;
+    if (fromPdf) { try { cc = await renderPdfRegion(d, sx/base.width, sy/base.height, sw/base.width, sh/base.height, cropPx, cropPy); } catch(e) { cc = null; } }
+    if (!cc) { cc = document.createElement("canvas"); cc.width = cropPx; cc.height = cropPy;
+      const c0 = cc.getContext("2d"); c0.fillStyle="#fff"; c0.fillRect(0,0,cropPx,cropPy); const sc = cropPx / sw;
+      c0.drawImage(base, -sx*sc, -sy*sc, base.width*sc, base.height*sc); }
+    const cx = cc.getContext("2d"); const u = cropPx/900; // sizes below are designed for 900 px
+    const rr = cropPx/22;
+    drawTag(cx, cropPx/2, cropPy/2, rr*1.25, item.label, catColor(pt));
+    { const iw = cropPx*0.30, ih = iw*base.height/base.width, hb = 30*u, pd = 8*u;
+      const pw = iw + 2*pd, ph = ih + 2*pd + hb, px = cropPx - pw - 14*u, py = cropPy - ph - 14*u;
+      cx.save(); cx.shadowColor = "rgba(0,0,0,.45)"; cx.shadowBlur = 18*u; cx.shadowOffsetY = 4*u;
+      cx.fillStyle = "#e4e7e5"; cx.fillRect(px, py, pw, ph); cx.restore();
+      cx.fillStyle = "#1d2321"; cx.fillRect(px, py, pw, hb);
+      cx.fillStyle = "#fff"; cx.font = `600 ${Math.round(19*u)}px sans-serif`; cx.textAlign = "left"; cx.textBaseline = "middle";
+      cx.fillText("ÖVERSIKT", px + pd, py + hb/2 + 1);
+      const ix = px + pd, iy = py + hb + pd;
+      cx.fillStyle = "#fff"; cx.fillRect(ix, iy, iw, ih);
+      cx.globalAlpha = 0.55; cx.drawImage(base, ix, iy, iw, ih); cx.globalAlpha = 1;
+      const k2 = iw/base.width;
+      const rx = ix + Math.max(0,sx)*k2, ry = iy + Math.max(0,sy)*k2;
+      const rw = Math.min(sx+sw, base.width) - Math.max(0,sx), rh = Math.min(sy+sh, base.height) - Math.max(0,sy);
+      cx.fillStyle = "rgba(226,85,27,.18)"; cx.fillRect(rx, ry, rw*k2, rh*k2);
+      cx.lineWidth = 4*u; cx.strokeStyle = "#e2551b"; cx.strokeRect(rx, ry, rw*k2, rh*k2);
+      cx.lineWidth = 3*u; cx.strokeStyle = "#1d2321"; cx.strokeRect(px, py, pw, ph); }
+    row.crop = jpeg(cc, 0.88);
+  });
+  await inParallel(rows.filter(r => r.photo), 4, async r => { try { r.photo = await collage(r.photo); } catch(e) { r.photo = null; } });
+  rows.forEach(r => { delete r._pt; delete r._item; });
+  return { overview, rows, vector: fromPdf && window.PDFLib ? { drawing: d, tags, used } : null };
+}
+async function inParallel(list, limit, fn){ let i = 0; await Promise.all(Array.from({ length: Math.min(limit, list.length) }, async () => { while (i < list.length) await fn(list[i++]); })); }
+async function buildReport(p){
+  const o = expOpt(p); useCats(o.cat ? p : null); setCols(o.prio); // without categories every number gets the same colour
+  const overviews = [], rows = [], groups = [];
+  const built = [];
+  for (const f of p.floors) built.push(await buildFloor(f)); // one floor at a time keeps memory down
+  for (const [fi, f] of p.floors.entries()) { const r = built[fi]; overviews.push({ name: f.name, img: r.overview, vector: r.vector, count: (f.points||[]).length }); rows.push(...r.rows); groups.push({ name: f.name, rows: r.rows }); }
+  rows.sort((a,b)=>a.key-b.key);
+  return { name: p.name, info: p.info || {}, date: (p.info && p.info.date) || new Date().toLocaleDateString("sv-SE"), overviews, rows, groups: groups.filter(g => g.rows.length), multi: p.floors.length > 1 };
+}
+const pk = n => n + (n === 1 ? " punkt" : " punkter");
+const hexRgb = h6 => [1,3,5].map(i => parseInt(h6.slice(i, i+2), 16));
+// Several photos share the photo cell: 1 fills it, 2 side by side, 3–4 in a grid, more shows "+N"
+async function collage(list){
+  const W = 900, H = Math.round(W * (ROW_H - 2*CELL_PAD) / (COLS[CI.photo].w - 2*CELL_PAD));
+  const imgs = []; for (const ph of list.slice(0, 4)) { try { imgs.push(await loadImg(src(ph))); } catch(e){} }
+  if (!imgs.length) return null;
+  if (imgs.length === 1) { const im = imgs[0]; const c = document.createElement("canvas"); const k = Math.min(1, 1200/Math.max(im.naturalWidth, im.naturalHeight));
+    c.width = Math.round(im.naturalWidth*k); c.height = Math.round(im.naturalHeight*k); c.getContext("2d").drawImage(im,0,0,c.width,c.height); return jpeg(c, 0.82); }
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0,0,W,H);
+  const g = 8, cols = 2, rows = imgs.length === 2 ? 1 : 2, tw = (W - g)/cols, th = (H - g*(rows-1))/rows;
+  imgs.forEach((im, i) => { const cx = (i % cols)*(tw+g), cy = Math.floor(i/cols)*(th+g);
+    const s2 = Math.max(tw/im.naturalWidth, th/im.naturalHeight), sw = tw/s2, sh = th/s2;
+    x.drawImage(im, (im.naturalWidth-sw)/2, (im.naturalHeight-sh)/2, sw, sh, cx, cy, tw, th); });
+  if (list.length > 4) { const cx = tw+g, cy = th+g; x.fillStyle = "rgba(0,0,0,.55)"; x.fillRect(cx, cy, tw, th);
+    x.fillStyle = "#fff"; x.font = `700 ${Math.round(th*0.3)}px sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("+" + (list.length - 3), cx + tw/2, cy + th/2); }
+  return jpeg(c, 0.82);
+}
+function fit(w, h, maxW, maxH){ const s = Math.min(maxW/w, maxH/h); return { w: w*s, h: h*s }; }
+
+// Bluebeam and similar tools often keep the drawing as markups (annotations) instead of page content.
+// Those are not part of an embedded page, so they are first drawn into the page content as vector graphics.
+function flattenAnnots(doc, page){
+  const { PDFName, PDFDict, PDFArray, PDFStream, PDFRef } = window.PDFLib;
+  const ctx = doc.context, N = PDFName.of;
+  const annots = page.node.lookupMaybe(N("Annots"), PDFArray); if (!annots) return 0;
+  let res = page.node.lookupMaybe(N("Resources"), PDFDict); if (!res) { res = ctx.obj({}); page.node.set(N("Resources"), res); }
+  let xo = res.lookupMaybe(N("XObject"), PDFDict); if (!xo) { xo = ctx.obj({}); res.set(N("XObject"), xo); }
+  const ops = []; let n = 0;
+  const num = v => (v && v.asNumber) ? v.asNumber() : 0;
+  for (let i = 0; i < annots.size(); i++) {
+    const a = annots.lookupMaybe(i, PDFDict); if (!a) continue;
+    const sub = a.lookupMaybe(N("Subtype"), PDFName); const st = sub ? sub.decodeText() : "";
+    if (["Link", "Popup", "Widget"].includes(st)) continue;
+    const flags = num(a.lookup(N("F"))); if (flags & 2 || flags & 32) continue;          // hidden / not shown
+    const ap = a.lookupMaybe(N("AP"), PDFDict); if (!ap) continue;
+    let ref = ap.get(N("N")); let app = ap.lookup(N("N"));
+    if (app instanceof PDFDict && !(app instanceof PDFStream)) { const as = a.lookupMaybe(N("AS"), PDFName); if (!as) continue; ref = app.get(as); app = app.lookup(as); }
+    if (!(app instanceof PDFStream)) continue;
+    const rectA = a.lookupMaybe(N("Rect"), PDFArray); const bboxA = app.dict.lookupMaybe(N("BBox"), PDFArray); if (!rectA || !bboxA) continue;
+    const R = [0,1,2,3].map(k => num(rectA.lookup(k))), B = [0,1,2,3].map(k => num(bboxA.lookup(k)));
+    const mA = app.dict.lookupMaybe(N("Matrix"), PDFArray); const m = mA ? [0,1,2,3,4,5].map(k => num(mA.lookup(k))) : [1,0,0,1,0,0];
+    const pts = [[B[0],B[1]],[B[2],B[1]],[B[0],B[3]],[B[2],B[3]]].map(([x,y]) => [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]]);
+    const minx = Math.min(...pts.map(p => p[0])), maxx = Math.max(...pts.map(p => p[0])), miny = Math.min(...pts.map(p => p[1])), maxy = Math.max(...pts.map(p => p[1]));
+    const rx = Math.min(R[0], R[2]), ry = Math.min(R[1], R[3]), rw = Math.abs(R[2]-R[0]), rh = Math.abs(R[3]-R[1]);
+    const sx = (maxx - minx) ? rw / (maxx - minx) : 1, sy = (maxy - miny) ? rh / (maxy - miny) : 1;
+    const name = "FlatAnnot" + (n++);
+    xo.set(N(name), ref instanceof PDFRef ? ref : ctx.register(app));
+    ops.push(`q ${sx} 0 0 ${sy} ${rx - minx*sx} ${ry - miny*sy} cm /${name} Do Q`);
+  }
+  if (!ops.length) return 0;
+  const add = ctx.register(ctx.flateStream("\n" + ops.join("\n") + "\n"));
+  const cur = page.node.get(N("Contents"));
+  if (!cur) page.node.set(N("Contents"), add);
+  else { const arr = page.node.lookup(N("Contents")); if (arr instanceof PDFArray) arr.push(add); else page.node.set(N("Contents"), ctx.obj([cur, add])); }
+  page.node.delete(N("Annots"));
+  return ops.length;
+}
+
+/* --- PDF, built with pdf-lib: the overview keeps the original drawing as vector graphics --- */
+async function makePdf(R){
+  const { PDFDocument, StandardFonts, rgb, degrees } = window.PDFLib;
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica), bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const MM = 72/25.4, M = 12;
+  const col = hex => { const [r,g,b] = hexRgb(hex); return rgb(r/255, g/255, b/255); };
+  const grey = v => rgb(v/255, v/255, v/255);
+  const okChars = new Map();
+  const SUBST = { "≥": ">=", "≤": "<=", "→": "->", "←": "<-", "✓": "OK", "✔": "OK", "≈": "~", "Δ": "delta", "∅": "Ø", "\u00a0": " " };
+  const safe = (t, f = font) => [...String(t)].map(ch => SUBST[ch] || ch).join("").split("").map(ch => { if (!okChars.has(ch)) { try { f.encodeText(ch); okChars.set(ch, true); } catch(e) { okChars.set(ch, false); } } return okChars.get(ch) ? ch : "?"; }).join("");
+  // drawing helpers in millimetres measured from the top-left corner of the page
+  const P = { page: null, W: 0, H: 0 };
+  const newPage = (w, h) => { P.page = doc.addPage([w*MM, h*MM]); P.W = w; P.H = h; };
+  const text = (t, x, y, size, o = {}) => { const f = o.bold ? bold : font; const s = safe(t, f);
+    let tx = x*MM; const w = f.widthOfTextAtSize(s, size); if (o.align === "center") tx -= w/2; if (o.align === "right") tx -= w;
+    P.page.drawText(s, { x: tx, y: (P.H - y)*MM, size, font: f, color: o.color || grey(0) }); };
+  const rect = (x, y, w, h, o) => P.page.drawRectangle({ x: x*MM, y: (P.H - y - h)*MM, width: w*MM, height: h*MM, ...o });
+  const line = (x1, y1, x2, y2, o) => P.page.drawLine({ start: { x: x1*MM, y: (P.H - y1)*MM }, end: { x: x2*MM, y: (P.H - y2)*MM }, ...o });
+  const images = new Map();
+  const image = async (img, x, y, w, h) => { let e = images.get(img.data); if (!e) { e = await doc.embedJpg(img.data); images.set(img.data, e); }
+    P.page.drawImage(e, { x: x*MM, y: (P.H - y - h)*MM, width: w*MM, height: h*MM }); };
+  const wrap = (t, width, size) => { const out = []; for (const para of String(t).split(/\r?\n/)) { let cur = "";
+    for (const word of para.split(/\s+/)) { const tryS = cur ? cur + " " + word : word;
+      if (font.widthOfTextAtSize(safe(tryS), size) <= width*MM || !cur) cur = tryS; else { out.push(cur); cur = word; } }
+    out.push(cur); } return out; };
+
+  // overview pages
+  for (const [i, ov] of R.overviews.entries()) {
+    const land = ov.img.w > ov.img.h; newPage(land ? 297 : 210, land ? 210 : 297);
+    text(R.multi ? R.name + " – " + ov.name : R.name, M, M+4, 16, { bold: true });
+    text([infoLine(R.info) || R.date, pk(ov.count), "Översikt" + (R.multi ? " " + (i+1) + " av " + R.overviews.length : "")].join(" · "), M, M+9, 9, { color: grey(110) });
+    const v = ov.vector; let placedVector = false;
+    if (v) {
+      try {
+        const src0 = await PDFDocument.load(await pdfBytesFor(v.drawing), { ignoreEncryption: true });
+        const sp = src0.getPage((v.drawing.page || 1) - 1);
+        const rot = ((sp.getRotation().angle % 360) + 360) % 360;
+        const cb = sp.getCropBox();
+        try { flattenAnnots(src0, sp); } catch(e) {} // markups (e.g. from Bluebeam) become part of the drawing
+        if (!sp.node.Contents()) throw new Error("no contents"); // nothing to embed as vector: use the sharp picture instead
+        const emb = await doc.embedPage(sp, { left: cb.x, bottom: cb.y, right: cb.x + cb.width, top: cb.y + cb.height });
+        try { await emb.embed(); } // embed now, so a page that cannot be embedded falls back here instead of failing the whole export
+        catch(err) { if (Array.isArray(doc.embeddedPages)) doc.embeddedPages = doc.embeddedPages.filter(x => x !== emb); throw err; }
+        const dw = rot % 180 ? cb.height : cb.width, dh = rot % 180 ? cb.width : cb.height; // as shown on screen
+        const legendH = v.used.length ? 9 : 0;
+        const f2 = fit(dw, dh, (P.W - 2*M)*MM, (P.H - 2*M - 14 - legendH)*MM); const s = f2.w / dw;
+        const ox = M*MM + ((P.W - 2*M)*MM - f2.w)/2, oyTop = (P.H - M - 14)*MM;   // top-left of the drawing, in points
+        const w = cb.width*s, h = cb.height*s;
+        // pdf-lib rotates counter-clockwise around the drawing's bottom-left corner
+        const at = { 0: [ox, oyTop - f2.h], 90: [ox, oyTop], 180: [ox + f2.w, oyTop], 270: [ox + f2.w, oyTop - f2.h] }[rot];
+        P.page.drawPage(emb, { x: at[0], y: at[1], width: w, height: h, rotate: degrees(-rot) });
+        P.page.drawRectangle({ x: ox, y: oyTop - f2.h, width: f2.w, height: f2.h, borderColor: grey(200), borderWidth: 0.5 });
+        // numbers as vector shapes on top
+        const { r, dot, labels } = layoutTags(f2.w, f2.h, v.tags);
+        const X = px => ox + px, Y = py => oyTop - py;
+        for (const L of labels) { if (L.direct) continue;
+          const dx = L.pos.x - L.a.x, dy = L.pos.y - L.a.y, len = Math.hypot(dx, dy) || 1;
+          const end = { x: X(L.pos.x - dx/len*r), y: Y(L.pos.y - dy/len*r) }, start = { x: X(L.a.x), y: Y(L.a.y) };
+          P.page.drawLine({ start, end, thickness: Math.max(1.2, r*0.2), color: rgb(1,1,1) });
+          P.page.drawLine({ start, end, thickness: Math.max(0.7, r*0.11), color: grey(29) }); }
+        for (const L of labels) { if (L.direct) continue;
+          P.page.drawCircle({ x: X(L.a.x), y: Y(L.a.y), size: dot, color: col(L.color), borderColor: rgb(1,1,1), borderWidth: dot*0.5 }); }
+        for (const L of labels) {
+          P.page.drawCircle({ x: X(L.pos.x), y: Y(L.pos.y), size: r, color: col(L.color), borderColor: rgb(1,1,1), borderWidth: r*0.14 });
+          const size = r*labelScale(L.n), s2 = safe(L.n, bold), tw = bold.widthOfTextAtSize(s2, size);
+          P.page.drawText(s2, { x: X(L.pos.x) - tw/2, y: Y(L.pos.y) - size*0.36, size, font: bold, color: rgb(1,1,1) }); }
+        if (v.used.length) { let lx = ox; const ly = oyTop - f2.h - 5*MM;
+          for (const c of v.used) { P.page.drawCircle({ x: lx + 1.6*MM, y: ly + 1.2*MM, size: 1.6*MM, color: col(c.color) });
+            const s3 = safe(c.name, bold); P.page.drawText(s3, { x: lx + 4.2*MM, y: ly, size: 9, font: bold, color: grey(29) });
+            lx += 4.2*MM + bold.widthOfTextAtSize(s3, 9) + 5*MM; } }
+        placedVector = true;
+      } catch(e) { placedVector = false; }
+    }
+    if (!placedVector) { const o = fit(ov.img.w, ov.img.h, P.W - 2*M, P.H - 2*M - 14); await image(ov.img, M + (P.W - 2*M - o.w)/2, M + 14, o.w, o.h); }
+  }
+
+  // table pages: Nr | Prio | Beskrivning | Läge | Foto
+  const H = 297, TM = 12, BM = 14, headH = 8, pad = CELL_PAD;
+  const xs = [M]; COLS.forEach(c => xs.push(xs[xs.length-1] + c.w));
+  let y = 0;
+  const header = (g, cont) => {
+    newPage(210, 297);
+    text(R.name, M, TM+2, 11);
+    if (infoLine(R.info)) text(infoLine(R.info), M+186, TM+2, 8.5, { align: "right", color: grey(110) });
+    y = TM + 6;
+    if (R.multi) {
+      rect(M, y, 186, 11, { color: col("#e2551b") });
+      text(g.name + (cont ? " (forts.)" : ""), M+3, y+7.5, 13, { color: rgb(1,1,1) });
+      text(pk(g.rows.length), M+183, y+7.3, 9.5, { align: "right", color: rgb(1,1,1) });
+      y += 13;
+    }
+    rect(M, y, 186, headH, { color: grey(29) });
+    COLS.forEach((c, i) => text(c.t, xs[i]+pad, y+5.4, 10, { color: rgb(1,1,1) }));
+    y += headH;
+  };
+  for (const g of R.groups) {
+    header(g, false);
+    for (const row of g.rows) {
+      if (y + ROW_H > H - BM) header(g, true);
+      rect(M, y, 186, ROW_H, { borderColor: grey(190), borderWidth: 0.7 });
+      for (let i = 1; i < COLS.length; i++) line(xs[i], y, xs[i], y+ROW_H, { thickness: 0.7, color: grey(190) });
+      text(String(row.n), xs[CI.nr] + COLS[CI.nr].w/2, y+pad+6, 13, { align: "center" });
+      if (CI.prio != null && row.prio) text(String(row.prio), xs[CI.prio] + COLS[CI.prio].w/2, y+pad+6, 13, { align: "center" });
+      const lines = wrap(row.desc || "Ingen beskrivning", COLS[CI.desc].w - 2*pad, 10).slice(0, 9);
+      lines.forEach((l, li) => text(l, xs[CI.desc]+pad, y+pad+4.5 + li*4.4, 10, { color: row.desc ? grey(0) : grey(130) }));
+      if (row.crop) await image(row.crop, xs[CI.loc]+pad, y+pad, CROP_W_MM, CROP_H_MM);
+      if (row.photo) {
+        const bw = COLS[CI.photo].w - 2*pad, bh = ROW_H - 2*pad; const f = fit(row.photo.w, row.photo.h, bw, bh);
+        await image(row.photo, xs[CI.photo]+pad+(bw-f.w)/2, y+pad+(bh-f.h)/2, f.w, f.h);
+      } else if (row.hadPhoto) text("Fotot kunde inte läsas", xs[CI.photo]+pad, y+pad+4.5, 9, { color: grey(130) });
+      y += ROW_H;
+    }
+  }
+  return new Blob([await doc.save()], { type: "application/pdf" });
+}
+
+/* --- Word (.docx), written by hand: WordprocessingML in a stored ZIP --- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i=0;i<b.length;i++) c = CRC_T[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files, type){ // files: [{name, data:Uint8Array}]
+  const enc = new TextEncoder(); const parts = []; const central = []; let off = 0;
+  for (const f of files) {
+    const nm = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true);
+    lh.setUint32(14,crc,true); lh.setUint32(18,sz,true); lh.setUint32(22,sz,true); lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer), nm, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true);
+    ch.setUint32(16,crc,true); ch.setUint32(20,sz,true); ch.setUint32(24,sz,true); ch.setUint16(28,nm.length,true); ch.setUint32(42,off,true);
+    central.push(new Uint8Array(ch.buffer), nm);
+    off += 30 + nm.length + sz;
+  }
+  const csize = central.reduce((a,b)=>a+b.length,0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true); end.setUint32(12,csize,true); end.setUint32(16,off,true);
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+}
+function b64bytes(dataUrl){ const s = atob(dataUrl.split(",")[1]); const u = new Uint8Array(s.length); for (let i=0;i<s.length;i++) u[i] = s.charCodeAt(i); return u; }
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+function makeDocx(R){
+  const enc = new TextEncoder(); const media = []; let picId = 0;
+  const EMU = 36000, TW = 56.6929; // per mm
+  const img = (im, wmm, hmm) => {
+    const rid = "rIdImg" + (media.length+1); const file = "image" + (media.length+1) + ".jpeg";
+    media.push({ rid, file, data: b64bytes(im.data) }); picId++;
+    const cx = Math.round(wmm*EMU), cy = Math.round(hmm*EMU);
+    return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${picId}" name="Bild ${picId}"/>`+
+      `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">`+
+      `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${picId}" name="${file}"/><pic:cNvPicPr/></pic:nvPicPr>`+
+      `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`+
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>`+
+      `</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+  };
+  const para = (inner, ppr="") => `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/>${ppr}</w:pPr>${inner}</w:p>`;
+  const run = (t, rpr="") => `<w:r><w:rPr>${rpr}</w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
+  const textParas = (t, rpr) => String(t).split(/\r?\n/).map(line => para(run(line, rpr))).join("");
+  const tw = mm => Math.round(mm*TW);
+  const cell = (wmm, content, opts={}) => `<w:tc><w:tcPr><w:tcW w:w="${tw(wmm)}" w:type="dxa"/>${opts.fill?`<w:shd w:val="clear" w:color="auto" w:fill="${opts.fill}"/>`:""}<w:vAlign w:val="${opts.v||"top"}"/></w:tcPr>${content}</w:tc>`;
+
+  // one overview page per floor
+  let body = "";
+  R.overviews.forEach((ov, i) => {
+    const o = fit(ov.img.w, ov.img.h, 186, 235);
+    body += para(run(R.multi ? R.name + " – " + ov.name : R.name, `<w:b/><w:sz w:val="32"/>`)) +
+      para(run([infoLine(R.info) || R.date, pk(ov.count), "Översikt" + (R.multi ? " " + (i+1) + " av " + R.overviews.length : "")].join(" · "), `<w:color w:val="6E6E6E"/><w:sz w:val="18"/>`), `<w:spacing w:before="0" w:after="160"/>`) +
+      para(img(ov.img, o.w, o.h), `<w:jc w:val="center"/>`) +
+      `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+  });
+
+  // table
+  const border = `<w:tblBorders>${["top","left","bottom","right","insideH","insideV"].map(s=>`<w:${s} w:val="single" w:sz="4" w:space="0" w:color="BEBEBE"/>`).join("")}</w:tblBorders>`;
+  let out = "";
+  R.groups.forEach((g, gi) => {
+  if (gi > 0) out += `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+  if (R.multi) out += `<w:tbl><w:tblPr><w:tblW w:w="${tw(186)}" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="${tw(186)}"/></w:tblGrid><w:tr>` +
+    cell(186, para(run(g.name, `<w:b/><w:color w:val="FFFFFF"/><w:sz w:val="28"/>`) + run("   " + pk(g.rows.length), `<w:color w:val="FFFFFF"/><w:sz w:val="19"/>`)), {fill:"E2551B", v:"center"}) +
+    `</w:tr></w:tbl>` + para("", `<w:spacing w:before="0" w:after="80"/>`);
+  let tbl = `<w:tbl><w:tblPr><w:tblW w:w="${tw(186)}" w:type="dxa"/><w:tblLayout w:type="fixed"/>${border}<w:tblCellMar><w:top w:w="${tw(CELL_PAD)}" w:type="dxa"/><w:left w:w="${tw(CELL_PAD)}" w:type="dxa"/><w:bottom w:w="${tw(CELL_PAD)}" w:type="dxa"/><w:right w:w="${tw(CELL_PAD)}" w:type="dxa"/></w:tblCellMar></w:tblPr>`;
+  tbl += `<w:tblGrid>${COLS.map(c=>`<w:gridCol w:w="${tw(c.w)}"/>`).join("")}</w:tblGrid>`;
+  tbl += `<w:tr><w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>${COLS.map(c => cell(c.w, para(run(c.t, `<w:b/><w:color w:val="FFFFFF"/><w:sz w:val="20"/>`)), {fill:"1D2321", v:"center"})).join("")}</w:tr>`;
+  for (const row of g.rows) {
+    const bw = COLS[CI.photo].w - 2*CELL_PAD, bh = ROW_H - 2*CELL_PAD;
+    const photo = row.photo ? (() => { const f = fit(row.photo.w, row.photo.h, bw, bh); return para(img(row.photo, f.w, f.h), `<w:jc w:val="center"/>`); })()
+      : row.hadPhoto ? para(run("Fotot kunde inte läsas", `<w:color w:val="828282"/><w:sz w:val="18"/>`)) : para("");
+    tbl += `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="${tw(ROW_H)}" w:hRule="exact"/></w:trPr>` +
+      cell(COLS[CI.nr].w, para(run(String(row.n), `<w:b/><w:sz w:val="26"/>`), `<w:jc w:val="center"/>`)) +
+      (CI.prio != null ? cell(COLS[CI.prio].w, para(row.prio ? run(String(row.prio), `<w:b/><w:sz w:val="26"/>`) : "", `<w:jc w:val="center"/>`)) : "") +
+      cell(COLS[CI.desc].w, (row.desc ? textParas(row.desc, `<w:sz w:val="20"/>`) : para(run("Ingen beskrivning", `<w:i/><w:color w:val="828282"/><w:sz w:val="21"/>`)))) +
+      cell(COLS[CI.loc].w, para(img(row.crop, CROP_W_MM, CROP_H_MM))) +
+      cell(COLS[CI.photo].w, photo, {v:"center"}) + `</w:tr>`;
+  }
+  tbl += `</w:tbl>`;
+  out += tbl;
+  });
+  body += out;
+
+  const m = tw(12);
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">`+
+    `<w:body>${body}${para("")}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="${m}" w:right="${m}" w:bottom="${m}" w:left="${m}" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="21"/><w:lang w:val="sv-SE"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults></w:styles>`;
+  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+  const drels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${media.map(x=>`<Relationship Id="${x.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${x.file}"/>`).join("")}</Relationships>`;
+  return zipStore([
+    { name:"[Content_Types].xml", data: enc.encode(ct) },
+    { name:"_rels/.rels", data: enc.encode(rels) },
+    { name:"word/document.xml", data: enc.encode(doc) },
+    { name:"word/styles.xml", data: enc.encode(styles) },
+    { name:"word/_rels/document.xml.rels", data: enc.encode(drels) },
+    ...media.map(x => ({ name: "word/media/" + x.file, data: x.data })),
+  ]);
+}
+
+/* --- Excel (.xlsx), written by hand: SpreadsheetML in a stored ZIP --- */
+function makeXlsx(p){
+  useCats(p);
+  const enc = new TextEncoder();
+  const pts = allPts(p).sort((a,b)=>a.n-b.n);
+  const col = i => String.fromCharCode(65 + i);
+  const cellStr = (ref, v, st) => `<c r="${ref}" t="inlineStr"${st?` s="${st}"`:""}><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
+  const cellNum = (ref, v, st) => `<c r="${ref}"${st?` s="${st}"`:""}><v>${v}</v></c>`;
+  const o = expOpt(p); if (!o.cat) useCats(null);
+  const items = pts.flatMap(pt => places(pt).map(pl => ({ pt, pl })));
+  const XC = [ // [header, width, cell(ref, item)]
+    ["Nr", 7, (r, { pt, pl }) => pl.k < 0 ? cellNum(r, pt.n, 2) : cellStr(r, pl.label, 2)],
+    o.prio ? ["Prio", 7, (r, { pt }) => pt.prio ? cellNum(r, pt.prio, 2) : cellStr(r, "")] : null,
+    ["Våningsplan", 16, (r, { pt }) => cellStr(r, pt.floorName)],
+    o.cat ? ["Kategori", 18, (r, { pt }) => cellStr(r, catName(pt))] : null,
+    ["Beskrivning", 60, (r, { pt }) => cellStr(r, pt.desc || "", 5)],
+    ["Antal foton", 12, (r, { pl }) => cellNum(r, pl.photos.length)],
+    ["Underpunkt till", 12, (r, { pt, pl }) => pl.k < 0 ? cellStr(r, "") : cellNum(r, pt.n)],
+    ["Läge X (%)", 12, (r, { pl }) => cellNum(r, Math.round(pl.x*1000)/10)],
+    ["Läge Y (%)", 12, (r, { pl }) => cellNum(r, Math.round(pl.y*1000)/10)],
+  ].filter(Boolean);
+  const lastCol = col(XC.length - 1);
+  let rows = `<row r="1">${cellStr("A1", p.name, 3)}</row>`;
+  rows += `<row r="2">${cellStr("A2", (infoLine(p.info) ? infoLine(p.info) + " · " : "") + "Exporterad " + new Date().toLocaleDateString("sv-SE") + " · " + pk(pts.length) + (items.length > pts.length ? " och " + (items.length - pts.length) + " underpunkter" : ""), 4)}</row>`;
+  rows += `<row r="4">${XC.map((c,i) => cellStr(col(i)+"4", c[0], 1)).join("")}</row>`;
+  items.forEach((it, i) => { const r = 5 + i; rows += `<row r="${r}">` + XC.map((c, ci) => c[2](col(ci) + r, it)).join("") + `</row>`; });
+  const last = 4 + items.length;
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`+
+    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`+
+    `<cols>${XC.map((c,i) => `<col min="${i+1}" max="${i+1}" width="${c[1]}" customWidth="1"/>`).join("")}</cols>`+
+    `<sheetData>${rows}</sheetData>${pts.length ? `<autoFilter ref="A4:${lastCol}${last}"/>` : ""}</worksheet>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`+
+    `<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><sz val="10"/><color rgb="FF6E6E6E"/><name val="Calibri"/></font></fonts>`+
+    `<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1D2321"/><bgColor indexed="64"/></patternFill></fill></fills>`+
+    `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>`+
+    `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`+
+    `<cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`+
+    `<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>`+
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>`+
+    `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>`+
+    `<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>`+
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>`+
+    `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const wb = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Brister" sheetId="1" r:id="rId1"/></sheets>${pts.length ? `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Brister!$A$4:$${lastCol}$${last}</definedName></definedNames>` : ""}</workbook>`;
+  const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+  return zipStore([
+    { name:"[Content_Types].xml", data: enc.encode(ct) },
+    { name:"_rels/.rels", data: enc.encode(rels) },
+    { name:"xl/workbook.xml", data: enc.encode(wb) },
+    { name:"xl/_rels/workbook.xml.rels", data: enc.encode(wbRels) },
+    { name:"xl/styles.xml", data: enc.encode(styles) },
+    { name:"xl/worksheets/sheet1.xml", data: enc.encode(sheet) },
+  ], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+
+async function exportReport(kind){
+  const p = cur();
+  if (kind === "pdf" && !window.PDFLib) return toast("PDF-verktyget kunde inte laddas. Kontrollera internet och försök igen.");
+  if (sheetEl) { sheetEl.remove(); sheetEl = null; }
+  const label = { pdf:"PDF", docx:"Word-fil", xlsx:"Excel-fil" }[kind];
+  const done = busy("Skapar " + label + "…");
+  try {
+    let blob; try { blob = kind === "xlsx" ? makeXlsx(p) : await (async R => kind === "pdf" ? makePdf(R) : makeDocx(R))(await buildReport(p)); }
+    finally { useCats(cur()); setCols(true); }
+    done();
+    openSheet({ type:"ready", kind, blob, filename: fileBase(p) + "." + kind });
+  } catch(e){ done(); toast("Kunde inte exportera: " + (e.code || e.message || "okänt fel")); }
+}
+const MIME = { pdf:"application/pdf", docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+// The finished file: mail it (the phone's share sheet with the file attached) or save it
+function readySheet(cfg){
+  const p = cur(); const label = { pdf:"PDF", docx:"Word-fil", xlsx:"Excel-fil" }[cfg.kind];
+  const file = new File([cfg.blob], cfg.filename, { type: MIME[cfg.kind] });
+  const canMail = IS_APP && navigator.canShare && (() => { try { return navigator.canShare({ files:[file] }); } catch(e) { return false; } })();
+  const subject = "Inventering – " + p.name + (p.info && p.info.nr ? " (" + p.info.nr + ")" : "");
+  const body = "Hej,\n\nBifogat finns inventeringsprotokollet för " + p.name + (infoLine(p.info) ? " (" + infoLine(p.info) + ")" : "") + ".\n\nMed vänliga hälsningar\n" + ((p.info && p.info.inspector) || "");
+  const size = cfg.blob.size > 1048576 ? (cfg.blob.size/1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(cfg.blob.size/1024)) + " kB";
+  const mail = async () => {
+    try { await navigator.share({ files:[file], title: subject, text: body }); dropSheet(); toast("Skickat vidare"); }
+    catch(e) { if (e && e.name === "AbortError") return; toast("Delningen gick inte att öppna. Spara filen och bifoga den i mejlet."); }
+  };
+  const save = async () => {
+    try { await downloads.save({ filename: cfg.filename, data: file }); dropSheet(); toast(label + (cfg.kind === "pdf" ? ":en" : "en") + " är sparad"); }
+    catch(e) { if (e && e.code === "declined") return; toast("Kunde inte spara: " + (e.code || e.message || "okänt fel")); }
+  };
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{}, label + " klar"), h("span",{class:"count"}, size)),
+    h("p",{class:"fname"}, cfg.filename),
+    canMail ? h("button",{class:"btn primary",onclick:mail},"Maila / dela") : null,
+    canMail ? h("p",{class:"muted",style:"margin:-6px 0 0;line-height:1.4"},"Välj e-postappen i listan. Filen bifogas och ämne och hälsning fylls i, du skriver bara in mottagaren.") : null,
+    h("button",{class:"btn " + (canMail ? "ghost" : "primary"),onclick:save}, IS_APP ? "Spara på telefonen" : "Spara fil"),
+    !IS_APP ? h("p",{class:"muted",style:"margin:-6px 0 0;line-height:1.4"},"Här inne i Claude kan filen bara sparas. Bifoga den sedan i ett mejl, eller använd appversionen för att maila direkt.") : null,
+    h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"));
+}
+function exportSheet(){
+  const p = cur(); const n = ptCount(p);
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{},"Exportera"), h("span",{class:"count"}, pk(n))),
+    h("p",{style:"margin:0;color:var(--muted);line-height:1.4"}, "PDF och Word: översikt per våningsplan och en tabell med Nr., beskrivning, läge och foton. Excel: en sorterbar lista med nummer, våningsplan, kategori och beskrivning."),
+    h("div",{class:"exgrid"},
+      h("button",{class:"btn primary",onclick:()=>exportReport("pdf")},"PDF", h("small",{},"Protokoll")),
+      h("button",{class:"btn primary",onclick:()=>exportReport("docx")},"Word", h("small",{},"Redigerbart")),
+      h("button",{class:"btn primary",onclick:()=>exportReport("xlsx")},"Excel", h("small",{},"Lista"))),
+    h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"));
+}
+
+/* --- Backup: one .json file with projects, drawings and photos; read it on any device --- */
+function blobToDataURL(b){ return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); }); }
+async function imgToData(img){
+  if (!img) return null;
+  if (imgBlob(img)) return blobToDataURL(imgBlob(img));
+  try { const r = await fetch(src(img)); if (r.ok) return blobToDataURL(await r.blob()); } catch(e){}
+  const im = await loadImg(src(img)); const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  c.getContext("2d").drawImage(im, 0, 0); return c.toDataURL("image/jpeg", 0.9);
+}
+function dataToBlob(d){ const [head, b64] = d.split(","); const type = (head.match(/data:([^;]+)/)||[])[1] || "image/jpeg";
+  const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type }); }
+async function backupProjects(list, label){
+  if (!list.length) return toast("Det finns inga projekt att säkerhetskopiera");
+  dropSheet(); const done = busy("Packar säkerhetskopia…");
+  try {
+    const out = [];
+    for (const p of list) {
+      const floors = [];
+      for (const f of p.floors) {
+        const points = [];
+        for (const pt of f.points||[]) { const photos = []; for (const ph of pt.photos) photos.push({ data: await imgToData(ph) });
+          const extra = []; for (const e of pt.extra) { const ep = []; for (const ph of e.photos) ep.push({ data: await imgToData(ph) }); extra.push({ x: e.x, y: e.y, photos: ep }); }
+          points.push({ n: pt.n, x: pt.x, y: pt.y, extra, cat: pt.cat || null, prio: pt.prio || null, desc: pt.desc || "", t: pt.t || null, photos }); }
+        floors.push({ name: f.name, drawing: { data: await imgToData(f.drawing), w: f.drawing.w, h: f.drawing.h, ...(f.drawing.pdf ? { pdf: await imgToData(f.drawing.pdf), page: f.drawing.page || 1 } : {}) }, points });
+      }
+      out.push({ name: p.name, info: p.info || {}, exp: p.exp || {}, created: p.created, updated: p.updated, cats: p.cats || [], floors });
+    }
+    const json = JSON.stringify({ app: "ritningsprotokoll", version: 1, exported: new Date().toISOString(), projects: out });
+    done();
+    const fname = (label.replace(/[^\wåäöÅÄÖ\- ]+/g,"").trim() || "projekt") + " säkerhetskopia " + new Date().toLocaleDateString("sv-SE") + ".json";
+    await downloads.save({ filename: fname, data: new Blob([json], { type: "application/json" }) });
+    toast("Säkerhetskopian är klar");
+  } catch(e){ done(); if (e && e.code === "declined") return; toast("Kunde inte göra säkerhetskopia: " + (e.code || e.message || "okänt fel")); }
+}
+$("#backupInput").addEventListener("change", async e => {
+  const file = e.target.files[0]; if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch(err) { return toast("Filen är ingen säkerhetskopia från BRS - Inventeringsapp"); }
+  if (!data || data.app !== "ritningsprotokoll" || !Array.isArray(data.projects)) return toast("Filen är ingen säkerhetskopia från BRS - Inventeringsapp");
+  const done = busy("Läser in…");
+  let count = 0, lastId = null;
+  try {
+    for (const p of data.projects) {
+      const total = p.floors.reduce((a,f) => a + 1 + f.points.reduce((b,pt) => b + pt.photos.length + (pt.extra||[]).reduce((c,e) => c + (e.photos||[]).length, 0), 0), 0); let k = 0;
+      const tick = () => done.set("Läser in " + p.name + " (" + (++k) + " av " + total + ")…");
+      const floors = [];
+      for (const f of p.floors) {
+        tick(); const drawing = { ...(await store.putImage(dataToBlob(f.drawing.data))), w: f.drawing.w, h: f.drawing.h };
+        if (f.drawing.pdf) { drawing.pdf = await store.putImage(dataToBlob(f.drawing.pdf)); drawing.page = f.drawing.page || 1; }
+        const points = [];
+        for (const pt of f.points) { const photos = []; for (const ph of pt.photos) { tick(); photos.push(await store.putImage(dataToBlob(ph.data))); }
+          const extra = []; for (const e of (pt.extra||[])) { const ep = []; for (const ph of (e.photos||[])) { tick(); ep.push(await store.putImage(dataToBlob(ph.data))); } extra.push({ x: e.x, y: e.y, photos: ep }); }
+          points.push({ n: pt.n, x: pt.x, y: pt.y, extra, cat: pt.cat || null, prio: [1,2,3].includes(pt.prio) ? pt.prio : null, desc: pt.desc || "", t: pt.t || Date.now(), photos }); }
+        floors.push({ id: uid(), name: f.name, drawing, points });
+      }
+      const taken = new Set(S.projects.map(x => x.name));
+      const np = normalize({ id: uid(), name: taken.has(p.name) ? p.name + " (inläst)" : p.name, info: p.info || {}, exp: p.exp || {}, created: p.created || Date.now(), updated: Date.now(), cats: Array.isArray(p.cats) ? p.cats : undefined, floors });
+      S.projects.push(np); await store.save(np); count++; lastId = np.id;
+    }
+    done(); render(); toast(count === 1 ? "Projektet är inläst" : count + " projekt är inlästa");
+  } catch(err){ done(); render(); toast("Inläsningen avbröts: " + (err.code || err.message || "okänt fel") + (count ? ". " + count + " projekt hann läsas in." : "")); }
+});
+
+/* ---------- Boot ---------- */
+window.addEventListener("resize", () => { if (S.view==="plan") layoutStage(); });
+function onProjects(list){
+  // keep the view stable; replace data. Storage often just echoes our own save: then nothing needs redrawing.
+  const next = mergePending(list.map(normalize));
+  const sig = JSON.stringify(next.map(p => stripPending(p)));
+  const mine = JSON.stringify(S.projects.map(p => stripPending(p)));
+  S.projects = next;
+  if (sig === mine) return;
+  if (sheetEl) return; // don't rebuild under an open sheet
+  render();
+}
+render();
+(async () => {
+  try {
+    if (window.pdfjsLib && window.pdfjsWorker) window.pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+  } catch(e){}
+  store = Local;
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(e){}
+  render();
+  store.watch(onProjects);
+})();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(()=>{}));
+</script>
+</body>
+</html>
