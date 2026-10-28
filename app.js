@@ -1,0 +1,2155 @@
+"use strict";
+// The app is never shown inside someone else's page
+if (window.top !== window.self) { document.body.textContent = "BRS - Inventeringsapp kan bara öppnas direkt, inte inbäddad i en annan sida."; throw new Error("framed"); }
+
+const $ = (s, el=document) => el.querySelector(s);
+const h = (tag, attrs={}, ...kids) => {
+  const el = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs||{})) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) el.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return el;
+};
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+/* ---------- Storage: cloud (db + assets) or this browser (IndexedDB) ---------- */
+const urlCache = new WeakMap();
+const IMGS = new Map();     // local image id -> Blob (file-backed handle from IndexedDB)
+const IMG_URLS = new Map(); // local image id -> object URL, created once per session
+function src(img){
+  if (!img) return null;
+  if (img.id) return "/_blob/" + img.id;
+  if (img.lid) { if (!IMG_URLS.has(img.lid)) { const b = IMGS.get(img.lid); if (!b) return null; IMG_URLS.set(img.lid, URL.createObjectURL(b)); } return IMG_URLS.get(img.lid); }
+  if (img.url) return img.url;
+  if (img.blob){ if(!urlCache.has(img.blob)) urlCache.set(img.blob, URL.createObjectURL(img.blob)); return urlCache.get(img.blob); }
+  return null;
+}
+const imgBlob = img => img && (img.blob || (img.lid && IMGS.get(img.lid)) || null);
+
+/* ---------- Small thumbnails for lists: made once, only when visible, a few at a time ---------- */
+const THUMBS = new Map(), THUMBS_W = new WeakMap();
+const thumbKey = ph => ph.id ? "id:" + ph.id : ph.lid ? "l:" + ph.lid : ph.tmp ? "t:" + ph.tmp : null;
+const thumbGet = ph => { const k = thumbKey(ph); return k ? THUMBS.get(k) : (ph.blob ? THUMBS_W.get(ph.blob) : null); };
+const thumbSet = (ph, u) => { const k = thumbKey(ph); if (k) THUMBS.set(k, u); else if (ph.blob) THUMBS_W.set(ph.blob, u); };
+async function makeThumb(ph, size){
+  let blob = imgBlob(ph); if (!blob) { const r = await fetch(src(ph)); blob = await r.blob(); }
+  const bmp = await createImageBitmap(blob); const k = Math.min(1, size / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(bmp.width*k)); c.height = Math.max(1, Math.round(bmp.height*k));
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); if (bmp.close) bmp.close();
+  return URL.createObjectURL(await canvasBlob(c, "image/jpeg", 0.8));
+}
+const thumbQ = []; let thumbRun = 0;
+const thumbIO = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { thumbIO.unobserve(e.target); thumbQ.push(e.target); pumpThumbs(); } }), { rootMargin: "300px" }) : null;
+function thumb(ph, size = 160){
+  const img = h("img",{alt:"",decoding:"async"}); const c = thumbGet(ph);
+  if (c) { img.src = c; return img; }
+  img._ph = ph; img._size = size; img.className = "tload";
+  if (thumbIO) thumbIO.observe(img); else { thumbQ.push(img); pumpThumbs(); }
+  return img;
+}
+function pumpThumbs(){
+  while (thumbRun < 3 && thumbQ.length) { const img = thumbQ.shift(); thumbRun++;
+    (async () => { try { let u = thumbGet(img._ph); if (!u) { u = await makeThumb(img._ph, img._size); thumbSet(img._ph, u); } img.src = u; }
+      catch(e) { const u = src(img._ph); if (u) img.src = u; }
+      finally { img.classList.remove("tload"); thumbRun--; pumpThumbs(); } })(); }
+}
+
+// This device's storage. Projects and images are kept apart, so saving a project does not rewrite its photos,
+// and the projects are kept in memory after the first read instead of being read back after every save.
+const Local = {
+  mode: "local", _db: null, _cache: null,
+  open(){ return this._db || (this._db = new Promise((res, rej) => {
+    const r = indexedDB.open("ritningsprotokoll", 2);
+    r.onupgradeneeded = () => { const d = r.result;
+      if (!d.objectStoreNames.contains("projects")) d.createObjectStore("projects", {keyPath:"id"});
+      if (!d.objectStoreNames.contains("images")) d.createObjectStore("images"); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  })); },
+  async tx(stores, mode, fn){ const db = await this.open(); return new Promise((res, rej) => {
+    const t = db.transaction(stores, mode); const out = fn(t);
+    t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); },
+  listeners: [],
+  async load(){
+    const [projects, keys, blobs] = await this.tx(["projects","images"], "readonly", t => {
+      const a = t.objectStore("projects").getAll(), k = t.objectStore("images").getAllKeys(), v = t.objectStore("images").getAll();
+      return { get result(){ return [a.result, k.result, v.result]; } }; });
+    keys.forEach((k, i) => IMGS.set(k, blobs[i]));
+    // older data kept photos inside the project record: move them to the image store once
+    const moved = [];
+    for (const p of projects) { let changed = false;
+      const fix = img => { if (img && img.blob && !img.lid && !img.tmp) { const lid = uid(); IMGS.set(lid, img.blob); moved.push([lid, img.blob]); changed = true; const { blob, ...r } = img; return { ...r, lid }; } return img; };
+      for (const f of p.floors || []) { f.drawing = fix(f.drawing);
+        for (const pt of f.points || []) { if (pt.photo) pt.photo = fix(pt.photo); pt.photos = (pt.photos||[]).map(fix); for (const e of pt.extra||[]) e.photos = (e.photos||[]).map(fix); } }
+      if (p.drawing) p.drawing = fix(p.drawing);
+      for (const pt of p.points || []) { if (pt.photo) pt.photo = fix(pt.photo); }
+      if (changed) p.__dirty = true; }
+    if (moved.length) await this.tx(["projects","images"], "readwrite", t => { const is = t.objectStore("images"), ps = t.objectStore("projects");
+      moved.forEach(([k, b]) => is.put(b, k)); projects.filter(p => p.__dirty).forEach(p => { delete p.__dirty; ps.put(p); }); });
+    return projects;
+  },
+  async refresh(){ if (!this._cache) { try { this._cache = await this.load(); } catch(e) { this._cache = []; } } this.listeners.forEach(f => f(this._cache)); },
+  watch(fn){ this.listeners.push(fn); this.refresh(); },
+  async save(p){ await this.tx(["projects"], "readwrite", t => t.objectStore("projects").put(p));
+    if (this._cache) { const i = this._cache.findIndex(x => x.id === p.id); if (i >= 0) this._cache[i] = p; else this._cache.push(p); } },
+  async remove(p){
+    const ids = (normalize(p).floors||[]).flatMap(f => [f.drawing, f.drawing && f.drawing.pdf, ...(f.points||[]).flatMap(allPhotos)]).map(x => x && x.lid).filter(Boolean);
+    await this.tx(["projects","images"], "readwrite", t => { t.objectStore("projects").delete(p.id); ids.forEach(k => t.objectStore("images").delete(k)); });
+    ids.forEach(k => { IMGS.delete(k); const u = IMG_URLS.get(k); if (u) { URL.revokeObjectURL(u); IMG_URLS.delete(k); } });
+    if (this._cache) this._cache = this._cache.filter(x => x.id !== p.id); },
+  async putImage(blob){ const lid = uid(); await this.tx(["images"], "readwrite", t => t.objectStore("images").put(blob, lid)); IMGS.set(lid, blob); return { lid }; },
+  async dropImage(img){ if (!img || !img.lid) return; const k = img.lid;
+    try { await this.tx(["images"], "readwrite", t => t.objectStore("images").delete(k)); } catch(e) {}
+    IMGS.delete(k); const u = IMG_URLS.get(k); if (u) { URL.revokeObjectURL(u); IMG_URLS.delete(k); } },
+};
+
+const Cloud = {
+  mode: "cloud", db: null, assets: null, queue: new Map(),
+  watch(fn){
+    this.db.collection("projects").onSnapshot(
+      snap => fn(snap.docs.map(d => ({ id: d.id, ...structuredClone(d.data()) }))),
+      err => { toast("Kunde inte läsa sparade ritningar (" + err.code + ")"); });
+  },
+  save(p){ // one write at a time per document; photos still uploading are left out until they are done
+    const prev = this.queue.get(p.id) || Promise.resolve();
+    const { id, ...body } = stripPending(p);
+    const next = prev.catch(()=>{}).then(() => this.db.doc("projects/" + id).set(JSON.parse(JSON.stringify(body))));
+    this.queue.set(p.id, next);
+    return next;
+  },
+  async remove(p){
+    await this.db.doc("projects/" + p.id).delete();
+    const ids = (normalize(p).floors||[]).flatMap(f => [f.drawing && f.drawing.id, f.drawing && f.drawing.pdf && f.drawing.pdf.id, ...(f.points||[]).flatMap(x => allPhotos(normPt(x)).map(ph => ph.id))]).filter(Boolean);
+    for (const i of ids) { try { await this.assets.delete(i); } catch(e){} }
+  },
+  async putImage(blob){ const r = await this.assets.upload(blob); return { id: r.id }; },
+  async dropImage(img){ if (img && img.id) { try { await this.assets.delete(img.id); } catch(e){} } },
+};
+
+let store = Local;
+// Save a file: share sheet on phones (Spara i Filer / skicka), download link otherwise
+const IS_APP = true; // installed app version: can hand files to the phone's mail app
+const downloads = { async save({filename, data}){
+  const file = new File([data], filename, { type: data.type || "application/pdf" });
+  const url = URL.createObjectURL(file); const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 30000); return { status:"saved" };
+} };
+
+const LOCAL_NOTE = "Allt sparas på den här telefonen. Gör en säkerhetskopia för att spara eller flytta projekten till en annan enhet.";
+/* ---------- Project details: assignment number, inventory date, inspector ---------- */
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+const lastInspector = () => { try { return localStorage.getItem("rp-insp") || ""; } catch(e) { return ""; } };
+function infoFields(info){ // returns inputs for the project details form
+  const nr = h("input",{type:"text",id:"inr",placeholder:"t.ex. 24-1187"}); nr.value = info.nr || "";
+  const date = h("input",{type:"date",id:"idate"}); date.value = info.date || todayISO();
+  const insp = h("input",{type:"text",id:"iinsp",placeholder:"För- och efternamn",autocomplete:"name"}); insp.value = info.inspector != null ? info.inspector : lastInspector();
+  const els = [
+    h("div",{class:"field"}, h("label",{for:"inr"},"Uppdragsnummer"), nr),
+    h("div",{class:"field2"},
+      h("div",{class:"field"}, h("label",{for:"idate"},"Inventeringsdatum"), date),
+      h("div",{class:"field"}, h("label",{for:"iinsp"},"Kontrollant"), insp)),
+  ];
+  return { els, read: () => { const v = { nr: nr.value.trim(), date: date.value || "", inspector: insp.value.trim() };
+    try { if (v.inspector) localStorage.setItem("rp-insp", v.inspector); } catch(e){} return v; } };
+}
+const infoLine = (info) => [info && info.nr ? "Uppdragsnr " + info.nr : null, info && info.date ? "Inventerad " + info.date : null, info && info.inspector ? "Kontrollant: " + info.inspector : null].filter(Boolean).join(" · ");
+
+/* ---------- Background photo upload ----------
+   With cloud storage a new photo is shown and saved at once as a temporary local copy {blob, tmp};
+   it is shrunk and uploaded in the background, then swapped for the stored copy and the project saved again. */
+const UPQ = []; let upBusy = false;
+const isTmp = ph => ph && ph.tmp;
+function stripPending(p){
+  if (!p.floors) return p;
+  const clean = list => (list||[]).filter(ph => !isTmp(ph));
+  return { ...p, floors: p.floors.map(f => ({ ...f, points: (f.points||[]).map(pt => ({ ...pt, photos: clean(pt.photos), extra: (pt.extra||[]).map(e => ({ ...e, photos: clean(e.photos) })) })) })) };
+}
+function findPhotoList(p, job){ // where a queued photo belongs
+  for (const f of p.floors) for (const pt of f.points) if (pt.id === job.ptId) {
+    if (job.subId == null) return { f, pt, list: pt.photos };
+    const e = pt.extra.find(x => x.id === job.subId); return e ? { f, pt, e, list: e.photos } : null; }
+  return null;
+}
+function mergePending(list){ // keep not-yet-uploaded photos visible when fresh data arrives from storage
+  for (const job of UPQ) { const p = list.find(x => x.id === job.pid); if (!p) continue;
+    const hit = findPhotoList(p, job); if (hit && !hit.list.some(ph => ph.tmp === job.photo.tmp)) hit.list.push(job.photo); }
+  return list;
+}
+function queuePhoto(photo, pid, ptId, subId){ UPQ.push({ photo, pid, ptId, subId }); upPill(); runUploads(); }
+async function runUploads(){
+  if (upBusy) return; upBusy = true;
+  while (UPQ.length) {
+    const job = UPQ[0]; let stored = null, small = null;
+    try { small = await shrink(job.photo.blob); }
+    catch(e) { small = null; } // not a readable picture: drop it below instead of retrying forever
+    if (small) {
+      try { stored = await store.putImage(small.blob); }
+      catch(e) { toast("Ett foto kunde inte laddas upp. Försöker igen…"); await new Promise(r => setTimeout(r, 4000)); continue; }
+    }
+    UPQ.shift();
+    const p = S.projects.find(x => x.id === job.pid); const hit = p && findPhotoList(p, job);
+    if (!hit || !hit.list.some(ph => ph.tmp === job.photo.tmp)) { if (stored) store.dropImage(stored); upPill(); continue; } // removed meanwhile
+    if (!stored) toast("Ett foto kunde inte läsas och togs bort");
+    const swap = l => stored ? l.map(ph => ph.tmp === job.photo.tmp ? stored : ph) : l.filter(ph => ph.tmp !== job.photo.tmp);
+    const np = { ...p, floors: p.floors.map(f => f !== hit.f ? f : { ...f, points: f.points.map(pt => pt !== hit.pt ? pt
+      : job.subId == null ? { ...pt, photos: swap(pt.photos) } : { ...pt, extra: pt.extra.map(e => e !== hit.e ? e : { ...e, photos: swap(e.photos) }) }) }) };
+    replaceLocal(np); upPill();
+    try { await store.save(np); } catch(e) {}
+  }
+  upBusy = false; upPill();
+}
+function upPill(){
+  let el = document.getElementById("uppill");
+  if (!UPQ.length) { if (el) el.remove(); return; }
+  if (!el) { el = h("div",{id:"uppill",class:"uppill",role:"status"}); document.body.append(el); }
+  el.textContent = "Laddar upp " + UPQ.length + (UPQ.length === 1 ? " foto…" : " foton…");
+}
+window.addEventListener("beforeunload", e => { if (UPQ.length) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---------- State ---------- */
+const S = { projects: [], current: null, floor: null, panel: (()=>{ try { return localStorage.getItem("rp-side") === "1"; } catch(e){ return false; } })(), sel: null, view: "list", pending: null, sheet: null, scale: 1, tx: 0, ty: 0, fitted: false };
+const cur = () => S.projects.find(p => p.id === S.current);
+// A project holds several floors (våningsplan); each floor has its own drawing and points.
+// Point numbers run through the whole project, so number 7 is unique across all floors.
+// Categories are created by the user, per project (name + colour). New projects start with the
+// categories of the most recently used project. The colour marks the number on the drawing and in reports.
+const OLD_CATS = [ // fixed list used by an earlier version; kept only to carry old data over
+  { id:"brandcell", name:"Brandcell", color:"#c62828" }, { id:"dorr", name:"Dörr", color:"#8d4e2a" },
+  { id:"utrymning", name:"Utrymning", color:"#1565c0" }, { id:"skyltning", name:"Skyltning", color:"#2e7d32" },
+  { id:"slack", name:"Släckutrustning", color:"#6a1b9a" }, { id:"larm", name:"Brandlarm", color:"#a87600" },
+  { id:"ovrigt", name:"Övrigt", color:"#546e7a" },
+];
+const CAT_COLORS = ["#c62828","#ad1457","#6a1b9a","#283593","#1565c0","#00838f","#2e7d32","#7a8b00","#a87600","#8d4e2a","#546e7a","#1d2321"];
+let CATS = []; // categories of the open project
+// "Noteringar" is always there: points you want to check with a colleague. They are grey and end up
+// on their own pages after the table in exports, apart from the defects meant for the customer.
+const NOTE_CAT = { id: "notes", name: "Noteringar", color: "#7a8580", fixed: true };
+const isNote = pt => pt && pt.cat === NOTE_CAT.id;
+const useCats = p => { CATS = [NOTE_CAT, ...((p && p.cats) || []).filter(c => c.id !== NOTE_CAT.id)]; return CATS; };
+const lastCats = () => { const p = [...S.projects].sort((a,b) => (b.updated||0) - (a.updated||0))[0]; return p && p.cats ? p.cats.map(c => ({ ...c })) : []; };
+const NO_CAT_COLOR = "#e2551b";
+const catOf = pt => CATS.find(c => c.id === pt.cat) || null;
+const catColor = pt => (catOf(pt) || {}).color || NO_CAT_COLOR;
+const catName = pt => (catOf(pt) || {}).name || "";
+// Each point holds a list of photos (older data had a single `photo`)
+// One object can be shown at several places on its floor: x/y is the main place, `extra` holds the others
+const normPt = pt => { let q = pt; if (!Array.isArray(q.photos)) { const { photo, ...r } = q; q = { ...r, photos: photo ? [photo] : [] }; }
+  return { ...q, extra: (Array.isArray(q.extra) ? q.extra : []).map(e => ({ ...(e.id ? { id: e.id } : {}), x: e.x, y: e.y, photos: Array.isArray(e.photos) ? e.photos : [] })) }; };
+// Sub-points of point n are labelled n.1, n.2 …; they share the description, category and colour of n
+const subLabel = (n, k) => k < 0 ? String(n) : n + "." + (k + 1);
+const places = pt => [{ x: pt.x, y: pt.y, k: -1, label: String(pt.n), photos: pt.photos },
+  ...(pt.extra||[]).map((e, i) => ({ x: e.x, y: e.y, k: i, label: subLabel(pt.n, i), photos: e.photos || [] }))];
+/* ---------- Object types and their requirements (BFS 2024:7, Boverkets föreskrifter om säkerhet i händelse av brand) ----------
+   Each requirement is assessed as Godkänt utfört, Ej godkänt utfört or Ej aktuellt. Assessments are stored compactly
+   as a string with one letter per requirement (o = godkänt, f = ej godkänt, n = ej aktuellt, - = ej bedömt), in the
+   order below. New requirements must therefore only be added at the end of a type's list. */
+const BFS = "BFS 2024:7";
+const OBJ_TYPES = [
+  { id: "door", name: "Dörr", groups: [
+    { name: "Kontrollpunkter", items: [
+      { short: "Brandklass", ref: "5 kap. 28–31, 44 §§", text: "Dörr uppfyller erforderlig brandklass" },
+      { short: "Bredd", ref: "7 kap. 27 §", text: "Dörr uppfyller erforderlig bredd (0,80/1,15 m)" },
+      { short: "Beslagning", ref: "7 kap. 34 §", text: "Dörr har rätt beslagning" },
+      { short: "Dörrstängare", ref: "5 kap. 43 §", text: "Dörr med dörrstängare stänger tätt" },
+      { short: "Uppställning", ref: "5 kap. 42 §", text: "Dörr som står uppställd stänger tätt" },
+    ] },
+  ] },
+];
+OBJ_TYPES.forEach(t => { t.items = t.groups.flatMap(g => g.items); t.items.forEach((it, i) => { it.i = i; }); });
+const CHECK = { o: { label: "Godkänt utfört" }, f: { label: "Ej godkänt utfört" }, n: { label: "Ej aktuellt" } };
+const typeOf = pt => (pt && OBJ_TYPES.find(t => t.id === pt.type)) || null;
+const checkAt = (pt, i) => { const c = (pt.checks || "")[i]; return CHECK[c] ? c : null; };
+function checkSummary(pt){
+  const t = typeOf(pt); if (!t) return null;
+  let o = 0, f = 0, n = 0; t.items.forEach(it => { const c = checkAt(pt, it.i); if (c === "o") o++; else if (c === "f") f++; else if (c === "n") n++; });
+  const open = t.items.length - o - f - n;
+  return { t, o, f, n, open, total: t.items.length };
+}
+const checkItems = pt => { const t = typeOf(pt); return t ? t.items.map(it => ({ text: it.text, ref: it.ref, s: checkAt(pt, it.i) })) : null; };
+/* Two kinds of project: an inventory/site visit, or a performance check (utförandekontroll).
+   Object types with checkpoints only exist in performance checks. Older projects without a kind count as
+   performance checks if any object has a type, otherwise as inventories. */
+// "Anteckningar" (notes): no drawings, and each object only has photos and a description (typed or dictated with the keyboard's microphone)
+const KINDS = { inv: { name: "Inventering/platsbesök", title: "Inventering", newName: "Ny inventering" },
+  ctl: { name: "Utförandekontroll", title: "Utförandekontroll", newName: "Ny utförandekontroll" },
+  notes: { name: "Anteckningar", title: "Anteckningar", newName: "Nya anteckningar" } };
+const projKind = p => p && KINDS[p.kind] ? p.kind : (p && (p.floors || []).some(f => (f.points || []).some(pt => pt.type)) ? "ctl" : "inv");
+const isCtl = p => projKind(p) === "ctl";
+const isNotes = p => projKind(p) === "notes";
+function typeChip(pt){ if (!isCtl(cur())) return null; const s = checkSummary(pt); if (!s) return null;
+  return h("span",{class:"tchip" + (s.f ? " bad" : s.open ? "" : " good")}, s.t.name + " · " + (s.f ? s.f + " ej godk." : s.open ? s.open + " ej bedömda" : "klar")); }
+const placed = pl => pl.x != null && pl.y != null; // objects on a floor without a drawing (or not yet placed) have no position
+const allPhotos = pt => [...(pt.photos||[]), ...(pt.extra||[]).flatMap(e => e.photos||[])];
+function normalize(p){
+  if (!p) return p;
+  if (!Array.isArray(p.floors)) {
+    const { drawing, points, ...rest } = p;
+    p = { ...rest, floors: drawing ? [{ id: "f1", name: "Plan 1", drawing, points: points || [] }] : [] };
+  }
+  const floors = p.floors.map(f => ({ ...f, points: (f.points||[]).map(normPt) }));
+  let cats = p.cats;
+  if (!Array.isArray(cats)) { const used = new Set(floors.flatMap(f => f.points.map(pt => pt.cat)).filter(Boolean)); cats = OLD_CATS.filter(c => used.has(c.id)); }
+  return { ...p, floors, cats };
+}
+const fl = () => { const p = cur(); if (!p) return null; return p.floors.find(f => f.id === S.floor) || p.floors[0] || null; };
+const allPts = p => p.floors.flatMap(f => (f.points||[]).map(pt => ({ ...pt, floorId: f.id, floorName: f.name })));
+const ptCount = p => p.floors.reduce((a,f) => a + (f.points||[]).length, 0);
+function withFloor(p, fid, change){ return { ...p, floors: p.floors.map(f => f.id === fid ? { ...f, ...change(f) } : f), updated: Date.now() }; }
+function renumber(p){ // keep numbers 1..N with no gaps, in their current order
+  const order = allPts(p).sort((a,b)=>a.n-b.n); const map = new Map(order.map((pt,i)=>[pt.floorId+":"+pt.n, i+1]));
+  return { ...p, floors: p.floors.map(f => ({ ...f, points: (f.points||[]).map(pt => ({ ...pt, n: map.get(f.id+":"+pt.n) })) })) };
+}
+
+/* ---------- Helpers ---------- */
+let toastT;
+function toast(msg){ document.querySelectorAll(".toast").forEach(e=>e.remove()); const t = h("div",{class:"toast",role:"status"},msg); document.body.append(t); clearTimeout(toastT); toastT = setTimeout(()=>t.remove(), 2600); }
+function busy(msg){ const b = h("div",{class:"busy"}, h("div",{}, msg)); document.body.append(b); return Object.assign(() => b.remove(), { set: m => { b.firstChild.textContent = m; } }); }
+function loadImg(url){ return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; }); }
+function canvasBlob(c, type="image/jpeg", q=0.85){ return new Promise(r => c.toBlob(r, type, q)); }
+async function shrink(file, max=1500, q=0.8){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImg(url);
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return { blob: await canvasBlob(c, "image/jpeg", q), w: c.width, h: c.height };
+  } finally { URL.revokeObjectURL(url); }
+}
+// Options for every PDF that is read: no code generated from file content, and local helper files when the app ships them
+const pdfOpts = data => ({ data, isEvalSupported: false, ...(window.PDF_ASSETS || {}) });
+async function openPdf(file){
+  const lib = window.pdfjsLib;
+  if (!lib) throw new Error("PDF-läsaren kunde inte laddas");
+  return lib.getDocument(pdfOpts(await file.arrayBuffer())).promise;
+}
+// One page of the uploaded PDF as its own small PDF file, kept with the floor (falls back to the whole file)
+async function singlePagePdf(file, pageNo){
+  try {
+    if (!window.PDFLib) throw 0;
+    const { PDFDocument } = window.PDFLib;
+    const srcDoc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+    const out = await PDFDocument.create(); const [pg] = await out.copyPages(srcDoc, [pageNo - 1]); out.addPage(pg);
+    return { blob: new Blob([await out.save()], { type: "application/pdf" }), page: 1 };
+  } catch(e) { return { blob: new Blob([await file.arrayBuffer()], { type: "application/pdf" }), page: pageNo }; }
+}
+async function pdfPageImage(pdf, pageNo){
+  const page = await pdf.getPage(Math.min(Math.max(1,pageNo), pdf.numPages));
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(4, 3200 / Math.max(base.width, base.height));
+  const vp = page.getViewport({ scale });
+  const c = document.createElement("canvas"); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,c.width,c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return { blob: await canvasBlob(c, "image/png"), w: c.width, h: c.height };
+}
+
+/* ---------- Rendering ---------- */
+const app = $("#app");
+function render(){
+  if (S.view === "plan" && (!cur() || !fl())) S.view = "list";
+  useCats(cur());
+  if (isNotes(cur())) useCats(null); // notes show no categories
+  app.replaceChildren(S.view === "plan" ? planView() : listView());
+  if (S.view === "plan") layoutStage();
+  ensureGuard();
+}
+// The phone's back button: closes an open sheet, ends move mode or goes back to the project list,
+// instead of leaving the app. One extra history entry ("guard") is kept while there is something to close.
+let guard = false;
+function ensureGuard(){ if (!guard && (sheetEl || S.view === "plan")) { try { history.pushState({ brs: 1 }, ""); guard = true; } catch(e) {} } }
+window.addEventListener("popstate", () => {
+  guard = false;
+  if (document.querySelector(".busy")) { ensureGuard(); return; }       // never interrupt saving or exporting
+  if (sheetEl) closeSheet();
+  else if (S.moving) finishMove(false);
+  else if (S.placing) { S.placing = null; render(); }
+  else if (S.view === "plan") { S.view = "list"; S.pending = null; render(); }
+  else { history.back(); return; }                                     // nothing to close: leave as usual
+  ensureGuard();
+});
+
+function listView(){
+  const items = [...S.projects].sort((a,b) => (b.updated||0) - (a.updated||0));
+  return h("div",{class:"view"},
+    h("div",{class:"bar"}, h("h1",{},"BRS - Inventeringsapp"),
+      h("button",{class:"btn primary",style:"padding:9px 14px;font-size:15px",onclick:()=>openSheet({type:"start",mode:"project"})},"+ Nytt projekt")),
+    h("div",{class:"scroll"},
+      store.mode === "local" ? h("p",{class:"note",style:"margin:0 0 12px"}, LOCAL_NOTE) : null,
+      items.length ? [h("div",{class:"listhead"}, h("div",{class:"eyebrow"}, items.length + " projekt"),
+          h("div",{class:"listtools"},
+            h("label",{class:"linkbtn",for:"backupInput",role:"button",tabindex:"0",onclick:()=>{ $("#backupInput").value = ""; }},"Läs in säkerhetskopia"),
+            downloads ? h("button",{class:"linkbtn",onclick:()=>backupProjects(S.projects, "Alla projekt")},"Säkerhetskopiera alla") : null)),
+        h("div",{class:"plist"}, items.map(p => { const f0 = p.floors[0]; const nf = p.floors.length; return h("button",{class:"pcard",onclick:()=>openProject(p.id)},
+          f0 && f0.drawing ? thumb(f0.drawing, 200) : (ph0 => ph0 ? thumb(ph0, 200) : h("div",{class:"ph"}))((allPts(p).find(x => x.photos.length) || { photos: [] }).photos[0]),
+          h("div",{}, h("b",{},p.name), h("small",{}, [KINDS[projKind(p)].title, p.info && p.info.nr ? "Nr " + p.info.nr : null, p.info && p.info.date ? p.info.date : null, nf + " våningsplan"].filter(Boolean).join(" · "))),
+          h("span",{class:"count"}, ptCount(p) + " pkt")
+        ); }))]
+      : h("div",{class:"empty"},
+          h("h2",{},"Skapa ditt första projekt"),
+          h("ol",{class:"steps"},
+            h("li",{},h("span",{},"1"),"Välj en planritning som PDF eller bild, eller starta utan ritning och lägg objekten i en lista. Fler våningsplan lägger du till efteråt."),
+            h("li",{},h("span",{},"2"),"Tryck där något ska dokumenteras, till exempel vid en dörr. Punkten får nästa nummer."),
+            h("li",{},h("span",{},"3"),"Ta eller välj ett foto och skriv en kort beskrivning. Foto 1 hör till punkt 1, och så vidare.")),
+          h("button",{class:"btn primary",onclick:()=>openSheet({type:"start",mode:"project"})},"Nytt projekt"),
+          h("label",{class:"btn ghost",for:"backupInput",role:"button",tabindex:"0",onclick:()=>{ $("#backupInput").value = ""; }},"Läs in säkerhetskopia"))
+    ));
+}
+
+let stageEl, vpEl;
+function floorTabs(p, f){
+  return h("div",{class:"floors",role:"tablist","aria-label":"Våningsplan"},
+    p.floors.map(x => h("button",{class:"floor" + (x.id===f.id?" on":""),role:"tab","aria-selected":x.id===f.id?"true":"false",onclick:()=>{ if (x.id===S.floor) return openSheet({type:"floor",fid:x.id}); S.floor = x.id; S.fitted = false; S.pending = null; render(); }},
+      x.name, h("span",{}, (x.points||[]).length), x.id===f.id ? h("em",{"aria-hidden":"true"},"⋯") : null)),
+    h("button",{class:"floor add",onclick:()=>openSheet(isNotes(p) ? { type:"newplan", file:null, pdf:null, mode:"floor" } : { type:"start", mode:"floor" })},"+ Våningsplan"));
+}
+function planBar(p){
+  return h("div",{class:"bar"},
+    h("button",{class:"iconbtn","aria-label":"Tillbaka",onclick:()=>{S.view="list";S.pending=null;S.moving=null;S.placing=null;render()}},"‹"),
+    h("h1",{},p.name),
+    h("button",{class:"iconbtn",onclick:()=>openSheet({type:"project"})},"Mer"));
+}
+function planFoot(p){
+  return h("div",{class:"foot"},
+    h("button",{class:"btn ghost",onclick:()=>openSheet({type:"list"})},"Punkter (" + ptCount(p) + ")"),
+    downloads ? h("button",{class:"btn primary",onclick:()=>openSheet({type:"export"})},"Exportera") : null);
+}
+// A floor without a drawing: the objects as a list, new ones added with a button
+function objView(p, f){
+  vpEl = null; stageEl = null; S.moving = null; S.placing = null;
+  const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
+  const list = h("div",{class:"scroll olist",id:"olist"},
+    h("button",{class:"btn primary addobj",onclick:newObject},"+ Nytt objekt"),
+    pts.length ? pts.map(pt => h("button",{class:"ocard","data-n":pt.n,onclick:()=>openSheet({type:"point",n:pt.n})},
+        h("span",{class:"n",style:"color:" + catColor(pt)}, pt.n),
+        h("div",{}, h("div",{class:"otop"}, catOf(pt) ? h("span",{class:"cchip",style:"--cc:" + catColor(pt)}, catName(pt)) : null, typeChip(pt), pt.prio && !isCtl(p) ? h("span",{class:"oprio"}, "Prio " + pt.prio) : null),
+          h("p",{class: pt.desc ? "" : "none"}, pt.desc || "Ingen beskrivning")),
+        pt.photos.length ? thumb(pt.photos[0], 160) : h("div",{class:"ph"})))
+    : h("p",{class:"sideempty",style:"padding:6px 0"}, "Inga objekt på " + f.name + " än. Tryck på + Nytt objekt för att lägga till det första." + (isNotes(p) ? " Beskrivningen kan du skriva eller tala in med mikrofonen på tangentbordet." : " Vill du placera objekten på en ritning kan du lägga till en via ⋯ på planfliken.")));
+  const keep = S.lscroll && S.lscroll.fid === f.id ? S.lscroll.top : 0;
+  requestAnimationFrame(() => { list.scrollTop = keep; });
+  list.addEventListener("scroll", () => { S.lscroll = { fid: f.id, top: list.scrollTop }; }, { passive:true });
+  return h("div",{class:"view"}, planBar(p), floorTabs(p, f), list, planFoot(p));
+}
+function newObject(){
+  const n = ptCount(cur()) + 1; S.pending = { n, x: null, y: null };
+  if (camFirst()) return cameraThen(files => openSheet({ type:"point", isNew:true, n, files }));
+  openSheet({ type:"point", isNew:true, n });
+}
+function planView(){
+  const p = cur(); const f = fl(); S.floor = f.id;
+  if (!f.drawing) return objView(p, f);
+  const pts = f.points || []; const next = ptCount(p) + 1;
+  const unplaced = pts.filter(pt => !placed(pt)).length;
+  vpEl = h("div",{class:"vp",id:"vp"});
+  stageEl = h("div",{class:"stage"}, drawingEl(f, p)); lastInv = 0;
+  if (S.moving && S.moving.fid !== f.id) S.moving = null;
+  for (const pt of pts) for (const pl of places(pt)) { const mv = S.moving && S.moving.n === pt.n && S.moving.k === pl.k;
+    if (!mv && !placed(pl)) continue;
+    const m = marker(pt.n, mv ? S.moving.x : pl.x, mv ? S.moving.y : pl.y, (pl.photos.length ? "" : "nophoto") + (pl.k >= 0 ? " extra" : "") + (mv ? " moving" : ""), catColor(pt), pl.label);
+    m.dataset.k = pl.k; stageEl.append(m); }
+  if (S.placing && S.placing.fid !== f.id) S.placing = null;
+  stageEl.classList.toggle("moveon", !!S.moving || !!S.placing);
+  if (S.placing) stageEl.querySelectorAll(`.mk[data-n="${S.placing.n}"]`).forEach(m => m.classList.add("placing"));
+  if (S.pending) stageEl.append(marker(S.pending.n, S.pending.x, S.pending.y, "pending"));
+  vpEl.append(stageEl, S.moving
+    ? h("div",{class:"movebar"}, h("span",{}, h("b",{}, "Flytta punkt " + subLabel(S.moving.n, S.moving.k)), "Dra punkten, eller tryck där den ska ligga."),
+        
+        h("button",{class:"sbtn",onclick:()=>finishMove(false)},"Avbryt"), h("button",{class:"sbtn ok",onclick:()=>finishMove(true)},"Klar"))
+    : S.placing
+    ? h("div",{class:"movebar"}, h("span",{}, h("b",{}, "Underpunkter till punkt " + S.placing.n), "Tryck på ritningen för att lägga till " + nextSub(S.placing.n) + "."),
+        h("button",{class:"sbtn ok",onclick:()=>{ S.placing = null; render(); }},"Klar"))
+    : h("div",{class:"hint"}, unplaced ? (unplaced === 1 ? "1 objekt" : unplaced + " objekt") + " saknar plats · öppna och välj Placera" : next > 1 ? "Tryck för punkt " + next + " · dubbeltryck flyttar en punkt" : "Tryck på ritningen för att sätta punkt 1"),
+    h("div",{class:"zoom"}, h("button",{"aria-label":"Zooma in",onclick:e=>{e.stopPropagation();zoomBy(1.4)}},"+"),
+      h("button",{"aria-label":"Zooma ut",onclick:e=>{e.stopPropagation();zoomBy(1/1.4)}},"−"),
+      h("button",{"aria-label":"Anpassa",style:"font-size:13px",onclick:e=>{e.stopPropagation();S.fitted=false;layoutStage()}},"⤢")));
+  if (S.panel) { vpEl.classList.add("with-side"); vpEl.append(sidePanel(f)); if (S.sel != null && !pts.some(x => x.n === S.sel)) S.sel = null; }
+  else vpEl.append(h("button",{class:"sidetoggle",onclick:()=>toggleSide(true)},"☰ Objekt (" + pts.length + ")"));
+  bindGestures(vpEl);
+  return h("div",{class:"view"}, planBar(p), floorTabs(p, f), vpEl, planFoot(p));
+}
+const DRAWING_ELS = new Map(); // one <img> per drawing, reused so it is not decoded again on every redraw
+function drawingEl(f, p){
+  const u = src(f.drawing); let el = DRAWING_ELS.get(u);
+  if (!el) { el = h("img",{src:u,width:f.drawing.w,height:f.drawing.h,draggable:"false",decoding:"async"}); DRAWING_ELS.set(u, el); if (DRAWING_ELS.size > 6) DRAWING_ELS.delete(DRAWING_ELS.keys().next().value); }
+  el.alt = "Ritning: " + p.name + ", " + f.name; return el;
+}
+function marker(n, x, y, cls, color, label){ const m = h("div",{class:"mk " + (cls||"") + (String(label || n).length > 2 ? " long" : ""), "data-n": n, style:`left:${x*100}%;top:${y*100}%` + (color ? `;--mc:${color}` : "")}, h("i",{},label || String(n))); return m; }
+
+function layoutStage(){
+  const f = fl(); if (!f || !vpEl || !f.drawing) return;
+  const W = vpEl.clientWidth, H = vpEl.clientHeight;
+  stageEl.style.width = f.drawing.w + "px"; stageEl.style.height = f.drawing.h + "px";
+  if (!S.fitted && W) {
+    const AW = W - sideW();
+    S.scale = Math.min(AW / f.drawing.w, H / f.drawing.h) * 0.96;
+    S.tx = (AW - f.drawing.w*S.scale)/2; S.ty = (H - f.drawing.h*S.scale)/2; S.fitted = true;
+  }
+  applyT();
+  if (S.panel) { const side = vpEl.querySelector(".side"); const el = S.sel != null && side && side.querySelector(`.sitem[data-n="${S.sel}"]`);
+    if (el) { side._programmatic = true; side.scrollTop = el.offsetTop + el.offsetHeight/2 - side.clientHeight/2; setTimeout(()=>{ side._programmatic = false; }, 50); }
+    markSel(); }
+}
+let tFrame = 0, lastInv = 0;
+function applyT(){ if (!stageEl || tFrame) return; tFrame = requestAnimationFrame(() => { tFrame = 0; if (!stageEl) return;
+  stageEl.style.transform = `translate(${S.tx}px,${S.ty}px) scale(${S.scale})`;
+  const inv = 1/S.scale; if (inv !== lastInv) { lastInv = inv; stageEl.style.setProperty("--inv", inv); } }); }
+function clampScale(s){ const f = fl(); const W = vpEl.clientWidth, H = vpEl.clientHeight; const fit = Math.min(W/f.drawing.w, H/f.drawing.h); return Math.max(fit*0.5, Math.min(s, fit*14, 6)); }
+function zoomAt(cx, cy, k){ const ns = clampScale(S.scale*k); const r = ns/S.scale; S.tx = cx - (cx - S.tx)*r; S.ty = cy - (cy - S.ty)*r; S.scale = ns; applyT(); }
+function zoomBy(k){ zoomAt(vpEl.clientWidth/2, vpEl.clientHeight/2, k); }
+
+function bindGestures(el){
+  const ptrs = new Map(); let start = null, pinch = null, moved = false, drag = null;
+  const local = e => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  el.addEventListener("pointerdown", e => {
+    if (e.target.closest("button,.side")) return;
+    el.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, local(e));
+    if (ptrs.size === 1) { start = { ...local(e), tx: S.tx, ty: S.ty, t: Date.now() }; moved = false; drag = null;
+      if (S.moving) { // grabbing the point being moved? (the tag sits above the point)
+        const f = fl(); const q = local(e);
+        const sx = S.tx + S.moving.x*f.drawing.w*S.scale, sy = S.ty + S.moving.y*f.drawing.h*S.scale;
+        if (Math.hypot(q.x - sx, q.y - (sy - 34)) < 30 || Math.hypot(q.x - sx, q.y - sy) < 26) drag = { dx: q.x - sx, dy: q.y - sy };
+      } }
+    if (ptrs.size === 2) { const [a,b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x-b.x, a.y-b.y), s: S.scale, mx:(a.x+b.x)/2, my:(a.y+b.y)/2, tx:S.tx, ty:S.ty }; moved = true; }
+  });
+  el.addEventListener("pointermove", e => {
+    if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, local(e));
+    if (ptrs.size >= 2 && pinch) {
+      const [a,b] = [...ptrs.values()]; const d = Math.hypot(a.x-b.x, a.y-b.y);
+      const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+      const ns = clampScale(pinch.s * d / pinch.d); const r = ns / pinch.s;
+      S.scale = ns; S.tx = mx - (pinch.mx - pinch.tx)*r; S.ty = my - (pinch.my - pinch.ty)*r; applyT();
+    } else if (start) {
+      const p = local(e); const dx = p.x - start.x, dy = p.y - start.y;
+      if (!moved && Math.hypot(dx,dy) > 6) moved = true;
+      if (moved && drag && S.moving) {
+        const f = fl(); setMovePos((p.x - drag.dx - S.tx)/S.scale/f.drawing.w, (p.y - drag.dy - S.ty)/S.scale/f.drawing.h);
+      } else if (moved) { S.tx = start.tx + dx; S.ty = start.ty + dy; applyT(); }
+    }
+  });
+  const end = e => {
+    if (!ptrs.has(e.pointerId)) return;
+    const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinch = null;
+    if (ptrs.size === 0) { drag = null;
+      if (!moved && start && e.type === "pointerup") tap(p.x, p.y);
+      start = null;
+    } else if (ptrs.size === 1) { const q = [...ptrs.values()][0]; start = { ...q, tx: S.tx, ty: S.ty }; }
+  };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  el.addEventListener("wheel", e => { if (e.target.closest(".side")) return; e.preventDefault(); const p = local(e); zoomAt(p.x, p.y, Math.exp(-e.deltaY*0.0015)); }, { passive:false });
+}
+
+/* ---------- Copy of camera photos to the phone's photo album (app version) ----------
+   A web app cannot write to the photo library by itself. On iPhone the share sheet opens with the photos
+   ("Spara bilder"); on Android the photos are downloaded, which puts them in the gallery's Downloads folder. */
+const albumOn = () => { try { return localStorage.getItem("rp-album") !== "0"; } catch(e) { return true; } };
+const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function toAlbum(files, base){ // must be called straight from the tap, before anything is awaited
+  if (!IS_APP || !albumOn() || !files.length) return;
+  const d = new Date(), z = n => String(n).padStart(2, "0");
+  const stamp = d.getFullYear() + z(d.getMonth()+1) + z(d.getDate()) + "-" + z(d.getHours()) + z(d.getMinutes()); // local time
+  const named = files.map((f, i) => new File([f], (base + " " + stamp + (files.length > 1 ? "-" + (i+1) : "")).replace(/[^\wåäöÅÄÖ.\- ]+/g, "") + ".jpg", { type: f.type || "image/jpeg" }));
+  if (isIOS() && navigator.canShare && navigator.canShare({ files: named })) {
+    navigator.share({ files: named }).catch(() => {});
+  } else {
+    named.forEach((file, i) => setTimeout(() => { const u = URL.createObjectURL(file); const a = document.createElement("a");
+      a.href = u; a.download = file.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 30000); }, i * 250));
+  }
+}
+
+/* ---------- Camera first: a tap on the drawing opens the camera at once; the point's sheet follows ---------- */
+const camFirst = () => { try { return localStorage.getItem("rp-cam") !== "0"; } catch(e) { return true; } };
+function cameraThen(next){
+  const input = $("#camInput"); input.value = "";
+  let opened = false, finished = false;
+  const finish = files => { if (finished) return; finished = true; cleanup(); next(files); };
+  const onAway = () => { opened = true; };
+  const onBack = () => { if (!opened) return; setTimeout(() => finish(input.files && input.files.length ? [...input.files] : []), 600); };
+  const onChange = () => finish([...input.files]);
+  const cleanup = () => { window.removeEventListener("blur", onAway); document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", onBack); input.removeEventListener("change", onChange); };
+  const onVis = () => document.hidden ? onAway() : onBack();
+  window.addEventListener("blur", onAway); document.addEventListener("visibilitychange", onVis); window.addEventListener("focus", onBack); input.addEventListener("change", onChange);
+  try { input.click(); } catch(e) {}
+  setTimeout(() => { if (!opened && !finished) finish([]); }, 900); // camera could not open here: show the sheet as usual
+}
+
+/* ---------- Moving a point: select it, then drag (or tap where it should go) ---------- */
+let lastTap = { n:null, t:0 };
+function startMove(n, k = -1){
+  const f = fl(); const pt = (f.points||[]).find(x => x.n === n); if (!pt) return;
+  dropSheet(); S.pending = null; S.placing = null;
+  const pl = places(pt).find(q => q.k === k) || places(pt)[0];
+  let x = pl.x, y = pl.y;
+  if (!placed(pl)) { // not placed yet: start in the middle of what is shown
+    const W = vpEl ? vpEl.clientWidth - sideW() : 0, H = vpEl ? vpEl.clientHeight : 0;
+    x = W ? Math.min(1, Math.max(0, (W/2 - S.tx)/S.scale/f.drawing.w)) : 0.5; y = H ? Math.min(1, Math.max(0, (H/2 - S.ty)/S.scale/f.drawing.h)) : 0.5; }
+  S.moving = { n, k: pl.k, fid: f.id, x, y, ox: pl.x, oy: pl.y };
+  if (S.panel) S.sel = n;
+  render();
+  if (S.panel) selectPoint(n, { scroll:true, pan:placed(pl) });
+  else if (placed(pl)) panToPoint({ ...pt, x: pl.x, y: pl.y }, false);
+}
+function nextSub(n){ const pt = (fl().points||[]).find(x => x.n === n); return subLabel(n, pt ? pt.extra.length : 0); }
+function startPlacing(n){ dropSheet(); S.pending = null; S.moving = null; S.placing = { n, fid: fl().id }; render(); }
+// A tap in sub-point mode places the next sub-point (n.1, n.2 …) and opens it so a photo can be added
+function addPlacement(x, y){
+  const pl = S.placing; const pt = (fl().points||[]).find(q => q.n === pl.n); if (!pt) return;
+  S.pendingSub = { n: pl.n, x, y };
+  const m = marker(pl.n, x, y, "pending", catColor(pt), subLabel(pl.n, pt.extra.length)); stageEl.append(m);
+  const k = pt.extra.length;
+  if (camFirst()) return cameraThen(files => openSheet({ type:"sub", n: pl.n, k, isNew: true, files }));
+  openSheet({ type:"sub", n: pl.n, k, isNew: true });
+}
+async function removeSub(n, k){
+  const f = fl(); const pt = (f.points||[]).find(q => q.n === n); const old = pt && pt.extra[k];
+  const np = withFloor(cur(), f.id, ff => ({ points: ff.points.map(q => q.n === n ? { ...q, extra: q.extra.filter((_, i) => i !== k) } : q) }));
+  replaceLocal(np); if (old) old.photos.forEach(ph => store.dropImage(ph));
+  try { await store.save(np); toast("Underpunkt " + subLabel(n, k) + " borttagen"); } catch(e){ toast("Kunde inte spara"); }
+  dropSheet(); render();
+}
+// Photo picker shared by the point and sub-point sheets
+function photoPicker(initial, preFiles){
+  let keep = [...initial]; const added = (preFiles||[]).map(file => ({ file, url: URL.createObjectURL(file), cam: true }));
+  const grid = h("div",{class:"pgrid"});
+  const draw = () => {
+    const tiles = [
+      ...keep.map((ph, i) => h("div",{class:"ptile"}, thumb(ph, 300),
+        h("button",{class:"pdel","aria-label":"Ta bort foto",onclick:()=>{ keep = keep.filter(x => x !== ph); draw(); }},"✕"))),
+      ...added.map(a => h("div",{class:"ptile"}, h("img",{src:a.url,alt:"Nytt foto"}),
+        h("button",{class:"pdel","aria-label":"Ta bort foto",onclick:()=>{ added.splice(added.indexOf(a),1); draw(); }},"✕"))),
+    ];
+    grid.replaceChildren(...(tiles.length ? tiles : [h("div",{class:"pempty"},"Inga foton än")]));
+  };
+  draw();
+  const onFile = e => { const cam = e.target.hasAttribute("capture"); for (const file of e.target.files) added.push({ file, url: URL.createObjectURL(file), cam }); e.target.value = ""; draw(); };
+  const buttons = h("div",{class:"pick"},
+    h("label",{}, h("input",{type:"file",accept:"image/*",capture:"environment",onchange:onFile}), "Ta foto"),
+    h("label",{}, h("input",{type:"file",accept:"image/*",multiple:true,onchange:onFile}), "Välj bilder"));
+  return { grid, buttons, count: () => keep.length + added.length, camFiles: () => added.filter(a => a.cam).map(a => a.file),
+    async commit(done){ // returns the final list, the removed ones and the photos still to upload
+      const photos = [...keep], fresh = []; let bad = 0;
+      for (let i = 0; i < added.length; i++) {
+        if (store.mode === "cloud") { const t = { blob: added[i].file, tmp: uid() }; photos.push(t); fresh.push(t); continue; } // uploaded in the background
+        if (added.length > 1) done.set("Sparar foto " + (i+1) + " av " + added.length + "…");
+        let small = null; try { small = await shrink(added[i].file); } catch(e) { bad++; continue; } // e.g. a file that is not a picture
+        photos.push(await store.putImage(small.blob)); }
+      if (bad) setTimeout(() => toast(bad === 1 ? "Ett foto kunde inte läsas och sparades inte" : bad + " foton kunde inte läsas och sparades inte"), 400);
+      return { photos, removed: initial.filter(ph => !keep.includes(ph)), fresh };
+    } };
+}
+function subSheet(cfg){
+  const f = fl(); const pt = (f.points||[]).find(q => q.n === cfg.n); if (!pt) return h("div",{});
+  const sub = cfg.isNew ? { x: S.pendingSub.x, y: S.pendingSub.y, photos: [] } : pt.extra[cfg.k];
+  const label = subLabel(cfg.n, cfg.k);
+  const pick = photoPicker(sub.photos, cfg.files);
+  const saveBtn = h("button",{class:"btn primary",onclick:async()=>{
+    toAlbum(pick.camFiles(), cur().name + " punkt " + label);
+    saveBtn.disabled = true; const done = busy("Sparar…");
+    try {
+      const { photos, removed, fresh } = await pick.commit(done);
+      const ptId = pt.id || uid(), subId = sub.id || uid();
+      const np = withFloor(cur(), f.id, ff => ({ points: ff.points.map(q => q.n !== cfg.n ? q
+        : { ...q, id: ptId, extra: cfg.isNew ? [...q.extra, { id: subId, x: sub.x, y: sub.y, photos }] : q.extra.map((e, i) => i === cfg.k ? { ...e, id: subId, photos } : e) }) }));
+      replaceLocal(np); S.pendingSub = null; dropSheet(); render(); toast("Underpunkt " + label + " sparad");
+      fresh.forEach(t => queuePhoto(t, np.id, ptId, subId));
+      await store.save(np); removed.forEach(ph => store.dropImage(ph));
+    } catch(e) { toast("Kunde inte spara: " + (e.code || e.message || "okänt fel")); saveBtn.disabled = false; }
+    finally { done(); }
+  }}, cfg.isNew ? "Spara " + label : "Spara");
+  const delWrap = h("div",{});
+  if (!cfg.isNew) { const ask = h("button",{class:"btn danger",onclick:()=>confirmRow(delWrap, ask, "Ta bort underpunkt " + label + "? Underpunkterna efter får nya nummer.", "Ta bort", ()=>removeSub(cfg.n, cfg.k))},"Ta bort underpunkt"); delWrap.append(ask); }
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("span",{class:"bigtag",style:"background:" + catColor(pt)}, label), h("h2",{}, cfg.isNew ? "Ny underpunkt" : "Underpunkt " + label), h("span",{class:"count"}, f.name)),
+    pick.grid, pick.buttons,
+    h("div",{class:"field"}, h("label",{},"Beskrivning (från punkt " + cfg.n + ")"),
+      h("div",{class:"inherit"}, catOf(pt) ? h("span",{class:"cchip",style:"--cc:" + catColor(pt)}, catName(pt)) : null, h("p",{}, pt.desc || "Ingen beskrivning"),
+        h("button",{class:"linkbtn",onclick:()=>{ S.pendingSub = null; openSheet({type:"point", n: cfg.n}); }},"Ändra beskrivningen på punkt " + cfg.n))),
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:()=>{ S.pendingSub = null; closeSheet(); render(); }},"Avbryt"), saveBtn),
+    !cfg.isNew ? h("button",{class:"btn ghost",onclick:()=>startMove(cfg.n, cfg.k)},"Flytta " + label) : null,
+    delWrap);
+}
+function moveMarkerEl(){ return stageEl && stageEl.querySelector(`.mk[data-n="${S.moving.n}"][data-k="${S.moving.k}"]`); }
+function setMovePos(x, y){
+  S.moving.x = Math.min(1, Math.max(0, x)); S.moving.y = Math.min(1, Math.max(0, y));
+  const m = moveMarkerEl(); if (m) { m.style.left = S.moving.x*100 + "%"; m.style.top = S.moving.y*100 + "%"; }
+}
+async function finishMove(save){
+  const mv = S.moving; if (!mv) return; S.moving = null;
+  if (save && (mv.x !== mv.ox || mv.y !== mv.oy)) {
+    const np = withFloor(cur(), mv.fid, ff => ({ points: (ff.points||[]).map(pt => pt.n !== mv.n ? pt
+      : mv.k < 0 ? { ...pt, x: mv.x, y: mv.y } : { ...pt, extra: pt.extra.map((e, i) => i === mv.k ? { x: mv.x, y: mv.y } : e) }) }));
+    replaceLocal(np); render();
+    try { await store.save(np); toast("Punkt " + mv.n + (mv.ox == null ? " placerad" : " flyttad")); } catch(e){ toast("Kunde inte spara den nya platsen"); }
+  } else { render(); if (save) toast("Punkt " + mv.n + " ligger kvar"); }
+}
+
+function tap(x, y){
+  const p = cur(); const f = fl(); const W = f.drawing.w, H = f.drawing.h;
+  // existing marker? (marker tip is at the point; the tag sits above it)
+  let hit = null, hitK = -1, best = 22; // about the size of a marker
+  for (const pt of f.points||[]) for (const pl of places(pt)) { if (!placed(pl)) continue;
+    const sx = S.tx + pl.x*W*S.scale, sy = S.ty + pl.y*H*S.scale;
+    const d = Math.hypot(sx - x, sy - y); if (d < best) { best = d; hit = pt; hitK = pl.k; }
+  }
+  const px = (x - S.tx) / S.scale / W, py = (y - S.ty) / S.scale / H;
+  if (S.placing) { if (px < 0 || py < 0 || px > 1 || py > 1) return toast("Tryck inne på ritningen"); return addPlacement(px, py); }
+  if (S.moving) { // while moving: a tap anywhere on the drawing puts the point there
+    if (px < 0 || py < 0 || px > 1 || py > 1) return;
+    return setMovePos(px, py);
+  }
+  if (hit) {
+    const now = Date.now();
+    if (lastTap.n === hit.n && lastTap.k === hitK && now - lastTap.t < 350) { clearTimeout(lastTap.timer); lastTap = { n:null, t:0 }; return startMove(hit.n, hitK); }
+    clearTimeout(lastTap.timer);
+    const n = hit.n;
+    const k = hitK;
+    lastTap = { n, k, t: now, timer: setTimeout(() => { lastTap = { n:null, t:0 };
+      if (k >= 0) { if (S.panel) selectPoint(n, { scroll:true }); openSheet({ type:"sub", n, k }); }
+      else S.panel ? selectPoint(n, { scroll:true }) : openSheet({ type:"point", n }); }, 300) };
+    return;
+  }
+  if (px < 0 || py < 0 || px > 1 || py > 1) return toast("Tryck inne på ritningen");
+  S.pending = { n: ptCount(p) + 1, x: px, y: py };
+  stageEl.append(marker(S.pending.n, px, py, "pending"));
+  if (camFirst()) return cameraThen(files => openSheet({ type:"point", isNew:true, n:S.pending.n, files }));
+  openSheet({ type:"point", isNew:true, n:S.pending.n });
+}
+
+/* ---------- Side list: scroll through the floor's objects, the centred one is highlighted on the drawing ---------- */
+const sideW = () => { const s = vpEl && vpEl.querySelector(".side"); return s ? s.offsetWidth : 0; };
+function sidePanel(f){
+  const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
+  const list = h("div",{class:"side",id:"side","aria-label":"Objekt på " + f.name});
+  const head = h("div",{class:"sidehead"}, h("b",{}, "Objekt"), h("span",{}, f.name),
+    h("button",{class:"sideclose","aria-label":"Stäng listan",onclick:()=>toggleSide(false)},"✕"));
+  list.append(head);
+  if (!pts.length) { list.append(h("p",{class:"sideempty"},"Inga objekt på det här planet än. Tryck på ritningen för att lägga till.")); return list; }
+  list.append(h("div",{class:"spacer"}));
+  for (const pt of pts) {
+    const item = h("div",{class:"sitem","data-n":pt.n,
+      onpointerdown:e=>{ if (e.target.closest("button")) { list._lock = Math.max(list._lock || 0, Date.now() + 1200); if (S.sel !== pt.n) { S.sel = pt.n; markSel(); } } }, // a tap on a button keeps this item selected
+      onclick:e=>{ if (e.target.closest("button")) return; selectPoint(pt.n, { scroll:true, pan:true }); }},
+      h("div",{class:"stop"}, h("b",{style:"color:" + catColor(pt)}, pt.n), catOf(pt) ? h("span",{class:"cchip",style:"--cc:" + catColor(pt)}, catName(pt)) : null, pt.extra.length ? h("span",{class:"plc"}, "+" + pt.extra.length + " underpunkt" + (pt.extra.length === 1 ? "" : "er")) : null, pt.photos.length ? thumb(pt.photos[0], 120) : null),
+      typeOf(pt) ? h("div",{}, typeChip(pt)) : null,
+      h("p",{class: pt.desc ? "" : "none"}, pt.desc || "Ingen beskrivning"),
+      h("div",{class:"sactions"},
+        h("button",{class:"sbtn",onclick:()=>openSheet({type:"point",n:pt.n})},"Redigera"),
+        h("button",{class:"sbtn",onclick:()=>startMove(pt.n)}, placed(pt) ? "Flytta" : "Placera"),
+        h("button",{class:"sbtn danger",onclick:e=>{
+          const box = e.target.closest(".sactions"); list._lock = Infinity; S.sel = pt.n; markSel(); // keep the question on screen until answered
+          box.replaceChildren(h("span",{class:"sask"},"Ta bort punkt " + pt.n + "?"),
+            h("button",{class:"sbtn",onclick:()=>renderSideOnly()},"Behåll"),
+            h("button",{class:"sbtn danger solid",onclick:async()=>{ S.sel = null; await deletePoint(f.id, pt.n); }},"Ta bort"));
+        }},"Ta bort")));
+    list.append(item);
+  }
+  list.append(h("div",{class:"spacer"}));
+  let raf = 0;
+  list.addEventListener("scroll", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
+    if (list._programmatic || (list._lock || 0) > Date.now()) return;
+    const mid = list.scrollTop + list.clientHeight/2; let best = null, bd = 1e9;
+    list.querySelectorAll(".sitem").forEach(el => { const c = el.offsetTop + el.offsetHeight/2; const d = Math.abs(c - mid); if (d < bd) { bd = d; best = el; } });
+    if (best && +best.dataset.n !== S.sel) selectPoint(+best.dataset.n, { scroll:false, pan:true });
+  }); }, { passive:true });
+  return list;
+}
+function renderSideOnly(){ const old = vpEl && vpEl.querySelector(".side"); if (!old) return; const top = old.scrollTop; const nw = sidePanel(fl()); old.replaceWith(nw); nw.scrollTop = top; markSel(); }
+function toggleSide(on){
+  S.panel = on; try { localStorage.setItem("rp-side", on ? "1" : "0"); } catch(e){}
+  if (!on) S.sel = null;
+  S.fitted = false; render(); // refit the drawing to the space beside the list
+  if (on) { const f = fl(); const first = (f.points||[]).slice().sort((a,b)=>a.n-b.n)[0]; if (first) selectPoint(S.sel || first.n, { scroll:true, pan:true, instant:true }); }
+}
+function markSel(){
+  if (!stageEl) return;
+  stageEl.classList.toggle("dim", S.panel && S.sel != null);
+  stageEl.querySelectorAll(".mk").forEach(m => m.classList.toggle("sel", S.panel && +m.dataset.n === S.sel));
+  const side = vpEl && vpEl.querySelector(".side");
+  if (side) side.querySelectorAll(".sitem").forEach(el => el.classList.toggle("sel", +el.dataset.n === S.sel));
+}
+function selectPoint(n, o={}){
+  const f = fl(); const pt = (f.points||[]).find(x => x.n === n); if (!pt) return;
+  S.sel = n; markSel();
+  const side = vpEl.querySelector(".side");
+  if (o.scroll && side) {
+    const el = side.querySelector(`.sitem[data-n="${n}"]`);
+    if (el) { side._programmatic = true; side.scrollTo({ top: el.offsetTop + el.offsetHeight/2 - side.clientHeight/2, behavior: o.instant ? "auto" : "smooth" });
+      clearTimeout(side._pt); side._pt = setTimeout(()=>{ side._programmatic = false; }, o.instant ? 50 : 600); }
+  }
+  if (o.pan) panToPoint(pt, o.instant);
+}
+function panToPoint(pt, instant){
+  const f = fl(); if (!vpEl || !f.drawing || !placed(pt)) return;
+  const W = vpEl.clientWidth - sideW(), H = vpEl.clientHeight;
+  const sx = S.tx + pt.x*f.drawing.w*S.scale, sy = S.ty + pt.y*f.drawing.h*S.scale;
+  const m = 50;
+  if (sx > m && sx < W - m && sy > m + 30 && sy < H - m) return; // already in view
+  S.tx += W/2 - sx; S.ty += H/2 - sy;
+  if (!instant) { stageEl.classList.add("anim"); clearTimeout(stageEl._a); stageEl._a = setTimeout(()=>stageEl.classList.remove("anim"), 400); }
+  applyT();
+}
+
+/* ---------- Sheets ---------- */
+let sheetEl = null;
+function closeSheet(){ if (sheetEl) sheetEl.remove(); sheetEl = null; if (S.pending || S.pendingSub) { S.pending = null; S.pendingSub = null; render(); } }
+function openSheet(cfg){
+  if (sheetEl) sheetEl.remove();
+  const body = cfg.type === "point" ? pointSheet(cfg) : cfg.type === "list" ? listSheet() : cfg.type === "newplan" ? newPlanSheet(cfg) : cfg.type === "export" ? exportSheet() : cfg.type === "floor" ? floorSheet(cfg.fid) : cfg.type === "cats" ? catsSheet() : cfg.type === "sub" ? subSheet(cfg) : cfg.type === "ready" ? readySheet(cfg) : cfg.type === "start" ? startSheet(cfg) : projectSheet();
+  sheetEl = h("div",{class:"scrim",onclick:e=>{ if(e.target===sheetEl) closeSheet(); }}, h("div",{class:"sheet",role:"dialog","aria-modal":"true"}, h("div",{class:"grab"}), body));
+  document.body.append(sheetEl);
+  ensureGuard();
+}
+const dropSheet = () => { if (sheetEl) sheetEl.remove(); sheetEl = null; };
+
+// Form to create or edit a category: name + colour
+function catForm(c, onSave, onCancel){
+  let color = c ? c.color : CAT_COLORS.find(x => !CATS.some(k => k.color === x)) || CAT_COLORS[0];
+  const name = h("input",{type:"text",id:"catname",maxlength:"30",placeholder:"Namn, t.ex. Dörr"}); name.value = c ? c.name : "";
+  const sw = h("div",{class:"swatches"});
+  const custom = h("input",{type:"color",class:"swcustom","aria-label":"Egen färg",oninput:e=>{ color = e.target.value; drawSw(); }});
+  const drawSw = () => { sw.replaceChildren(...CAT_COLORS.map(x => h("button",{class:"sw" + (x===color?" on":""),style:"--cc:" + x,"aria-label":"Färg " + x,onclick:()=>{ color = x; drawSw(); }})), custom); custom.value = color; preview.style.setProperty("--cc", color); };
+  const preview = h("span",{class:"cat on"}, "Förhandsvisning");
+  name.addEventListener("input", () => { preview.textContent = name.value.trim() || "Förhandsvisning"; });
+  const box = h("div",{class:"catform"},
+    h("input",{type:"hidden"}), name, sw, h("div",{class:"catrow"}, preview,
+      h("button",{class:"sbtn",onclick:onCancel},"Avbryt"),
+      h("button",{class:"sbtn ok",onclick:async()=>{ const nm = name.value.trim(); if (!nm) { name.focus(); return toast("Skriv ett namn på kategorin"); }
+        if (CATS.some(k => k.name.toLowerCase() === nm.toLowerCase() && (!c || k.id !== c.id))) return toast("Det finns redan en kategori som heter " + nm);
+        await onSave({ id: c ? c.id : "c" + uid(), name: nm, color }); }}, c ? "Spara" : "Lägg till")));
+  drawSw(); if (c) preview.textContent = c.name; setTimeout(() => name.focus(), 50);
+  return box;
+}
+async function saveCats(cats){
+  const np = { ...cur(), cats: cats.filter(c => !c.fixed), updated: Date.now() }; replaceLocal(np); useCats(np);
+  try { await store.save(np); } catch(e){ toast("Kunde inte spara kategorierna"); }
+}
+function catsSheet(){
+  const p = cur(); useCats(p);
+  const list = h("div",{class:"catlist"});
+  const draw = () => {
+    useCats(cur());
+    const count = id => allPts(cur()).filter(pt => pt.cat === id).length;
+    list.replaceChildren(...(CATS.length ? CATS.map(c => {
+      const row = h("div",{class:"catitem"});
+      if (c.fixed) { row.append(h("span",{class:"cat on",style:"--cc:" + c.color}, c.name), h("small",{}, pk(count(c.id))), h("span",{class:"muted"},"Alltid med · hamnar sist i exporten")); return row; }
+      const show = () => row.replaceChildren(h("span",{class:"cat on",style:"--cc:" + c.color}, c.name), h("small",{}, pk(count(c.id))),
+        h("button",{class:"sbtn",onclick:()=>row.replaceChildren(catForm(c, async nc => { await saveCats(CATS.map(k => k.id === c.id ? nc : k)); draw(); }, show))},"Ändra"),
+        h("button",{class:"sbtn danger",onclick:()=>row.replaceChildren(h("span",{class:"sask"}, "Ta bort " + c.name + "? " + (count(c.id) ? pk(count(c.id)) + " blir utan kategori." : "")),
+          h("button",{class:"sbtn",onclick:show},"Behåll"),
+          h("button",{class:"sbtn danger solid",onclick:async()=>{
+            let np = { ...cur(), cats: CATS.filter(k => k.id !== c.id && !k.fixed), updated: Date.now() };
+            np = { ...np, floors: np.floors.map(f => ({ ...f, points: f.points.map(pt => pt.cat === c.id ? { ...pt, cat: null } : pt) })) };
+            replaceLocal(np); useCats(np); try { await store.save(np); } catch(e){ toast("Kunde inte spara"); } draw(); render(); }},"Ta bort"))},"Ta bort"));
+      show(); return row; }) : [h("p",{class:"muted",style:"margin:0"},"Inga kategorier än.")]));
+  };
+  draw();
+  const addWrap = h("div",{});
+  const addBtn = h("button",{class:"btn ghost",onclick:()=>addWrap.replaceChildren(catForm(null, async nc => { await saveCats([...CATS, nc]); draw(); addWrap.replaceChildren(addBtn); render(); }, () => addWrap.replaceChildren(addBtn)))},"+ Ny kategori");
+  addWrap.append(addBtn);
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{},"Kategorier"), h("span",{class:"count"}, ((n) => n === 1 ? "1 egen" : n + " egna")((p.cats||[]).length))),
+    h("p",{class:"muted",style:"margin:0;line-height:1.4"},"Kategorierna gäller det här projektet. Nya projekt får samma kategorier som det senast använda."),
+    list, addWrap,
+    h("button",{class:"btn ghost",onclick:()=>{ dropSheet(); render(); }},"Klar"));
+}
+
+// Suggestions while typing a description: earlier descriptions in the same project that match what has
+// been typed so far. They only appear below the field; typing is never interrupted and nothing is filled in
+// unless a suggestion is tapped.
+const norm = t => t.toLowerCase().normalize("NFC").replace(/\s+/g, " ").trim();
+function descSuggest(input, p, own){
+  const box = h("div",{class:"sugg","aria-live":"polite"});
+  const counts = new Map(); // description -> { text, n, last }
+  for (const pt of allPts(p)) { const d = (pt.desc || "").trim(); if (!d) continue; const k = norm(d);
+    const c = counts.get(k) || { text: d, n: 0, last: 0 }; c.n++; c.last = Math.max(c.last, pt.t || 0); counts.set(k, c); }
+  const all = [...counts.values()];
+  const update = () => {
+    const q = norm(input.value);
+    if (q.length < 2 || !all.length) return box.replaceChildren();
+    const toks = q.split(" ");
+    const hits = [];
+    for (const c of all) {
+      const t = norm(c.text); if (t === q) continue;
+      const words = t.split(/[\s,.;:()\/-]+/);
+      let score = 0, ok = true;
+      for (const tok of toks) {
+        if (words.some(w => w.startsWith(tok))) score += 2; else if (t.includes(tok)) score += 1; else { ok = false; break; }
+      }
+      if (!ok) continue;
+      if (t.startsWith(q)) score += 5;
+      hits.push({ c, score });
+    }
+    hits.sort((a,b) => b.score - a.score || b.c.n - a.c.n || b.c.last - a.c.last);
+    box.replaceChildren(...hits.slice(0, 4).map(({ c }) => h("button",{type:"button",class:"schip",
+      onpointerdown: e => e.preventDefault(), // keeps the keyboard open
+      onclick: () => { input.value = c.text; box.replaceChildren(); input.focus(); const L = input.value.length; try { input.setSelectionRange(L, L); } catch(e){} }},
+      c.text, c.n > 1 ? h("small",{}, " ×" + c.n) : null)));
+  };
+  input.addEventListener("input", update);
+  return box;
+}
+
+function pointSheet(cfg){
+  const p = cur(); const f = fl(); const existing = (f.points||[]).find(x => x.n === cfg.n);
+  if (!cfg.isNew && !existing) return h("p",{class:"muted"},"Punkten finns inte på det här planet."); // e.g. removed meanwhile
+  const pick = photoPicker(existing ? existing.photos : [], cfg.files);
+  useCats(p);
+  const notes = isNotes(p);
+  let cat = existing ? existing.cat || null : notes ? null : (CATS.some(c => c.id === S.lastCat) ? S.lastCat : null);
+  let prio = existing ? existing.prio || null : (S.lastPrio || null);
+  const prioBox = h("div",{class:"prio",role:"radiogroup","aria-label":"Prioritering"});
+  const drawPrio = () => prioBox.replaceChildren(...[1,2,3].map(v => h("button",{class:"pbtn" + (prio===v?" on":""),role:"radio","aria-checked":prio===v?"true":"false",onclick:()=>{ prio = prio===v ? null : v; drawPrio(); }}, String(v))),
+    h("span",{class:"muted"}, prio ? "Tryck igen för att ta bort" : "Ingen prioritering vald"));
+  drawPrio();
+  const chips = h("div",{class:"cats"});
+  const badge = h("span",{class:"bigtag"}, String(cfg.n));
+  const tint = () => { const col = (CATS.find(c => c.id === cat) || {}).color || NO_CAT_COLOR; badge.style.background = col;
+    const pm = stageEl && stageEl.querySelector(".mk.pending"); if (pm) pm.style.setProperty("--mc", col); };
+  const drawChips = () => chips.replaceChildren(
+    ...CATS.map(c => h("button",{class:"cat" + (cat===c.id?" on":""),style:"--cc:" + c.color,"aria-pressed":cat===c.id?"true":"false",onclick:()=>{ cat = cat===c.id ? null : c.id; drawChips(); tint(); }}, c.name)),
+    h("button",{class:"cat add",onclick:()=>chips.replaceChildren(catForm(null, async nc => { await saveCats([...CATS, nc]); cat = nc.id; drawChips(); tint(); }, drawChips))}, "+ Ny kategori"));
+  drawChips(); tint();
+  // object type: shows the requirements that can apply to it, each assessed with three choices
+  const known = id => OBJ_TYPES.some(t => t.id === id) ? id : null; // an unknown type (damaged data) counts as none
+  const ctl = isCtl(p);
+  let type = !ctl ? null : existing ? known(existing.type) : known(S.lastType);
+  const marks = (existing && existing.checks || "").split("");
+  const typeBox = h("div",{class:"cats types"}), checkWrap = h("div",{});
+  const drawType = () => {
+    typeBox.replaceChildren(h("button",{class:"cat" + (!type ? " on" : ""),"aria-pressed":!type?"true":"false",onclick:()=>{ type = null; drawType(); }},"Ingen"),
+      ...OBJ_TYPES.map(t => h("button",{class:"cat" + (type === t.id ? " on" : ""),"aria-pressed":type===t.id?"true":"false",onclick:()=>{ type = t.id; drawType(); }}, t.name)));
+    checkWrap.replaceChildren(...(type ? [checklist(OBJ_TYPES.find(t => t.id === type), marks)] : []));
+  };
+  drawType();
+  const desc = notes ? h("textarea",{id:"desc",placeholder:"Skriv, eller tryck på mikrofonen på tangentbordet och tala in",maxlength:"800",style:"min-height:150px"})
+    : h("textarea",{id:"desc",placeholder:"Kort beskrivning, t.ex. Dörr D12, saknar dörrstängare",maxlength:"300"});
+  desc.value = existing ? existing.desc || "" : "";
+  const sugg = descSuggest(desc, p, existing ? existing.desc : null);
+  const saveBtn = h("button",{class:"btn primary",onclick:async()=>{
+    toAlbum(pick.camFiles(), p.name + " punkt " + cfg.n);
+    saveBtn.disabled = true; const done = busy("Sparar…");
+    try {
+      const { photos, removed, fresh } = await pick.commit(done);
+      const basePt = existing || S.pending; const ptId = (existing && existing.id) || uid();
+      const np = withFloor(cur(), f.id, ff => {
+        const pts = (ff.points||[]).filter(x => x.n !== cfg.n);
+        const tp = OBJ_TYPES.find(t => t.id === type);
+        const checks = tp ? tp.items.map(it => CHECK[marks[it.i]] ? marks[it.i] : "-").join("").replace(/-+$/, "") : "";
+        pts.push({ id: ptId, n: cfg.n, x: basePt.x, y: basePt.y, extra: existing ? existing.extra : [], photos, cat: cat || null, prio: ctl || notes ? (existing && existing.prio) || null : prio || null, desc: desc.value.trim(), t: Date.now(), // no priority in performance checks (a stored one is kept)
+          ...(!ctl ? (existing && existing.type ? { type: existing.type, checks: existing.checks || "" } : {}) : tp ? { type: tp.id, checks } : {}) });
+        return { points: pts.sort((a,b)=>a.n-b.n) };
+      });
+      if (cfg.isNew && !f.drawing) S.lscroll = { fid: f.id, top: 1e9 }; // show the new object at the end of the list
+      replaceLocal(np); S.pending = null; if (cat !== NOTE_CAT.id && !notes) S.lastCat = cat; if (!ctl && !notes) S.lastPrio = prio; if (ctl) S.lastType = type; // a note is never carried over to the next point if (S.panel) S.sel = cfg.n;
+      dropSheet(); render();
+      fresh.forEach(t => queuePhoto(t, np.id, ptId, null));
+      await store.save(np);
+      removed.forEach(ph => store.dropImage(ph));
+      toast("Punkt " + cfg.n + " sparad");
+    } catch(e) { toast("Kunde inte spara: " + (e.code || e.message || "okänt fel")); saveBtn.disabled = false; }
+    finally { done(); }
+  }}, cfg.isNew ? "Spara punkt " + cfg.n : "Spara");
+  const delWrap = h("div",{});
+  if (!cfg.isNew) {
+    const ask = h("button",{class:"btn danger",onclick:()=>{
+      delWrap.replaceChildren(h("p",{style:"margin:0 0 8px;color:var(--muted);font-size:14px"},"Ta bort punkt " + cfg.n + "? Punkterna efter får nya nummer."),
+        h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:()=>delWrap.replaceChildren(ask)},"Behåll"),
+          h("button",{class:"btn danger",style:"border-color:var(--danger)",onclick:async()=>{
+            await deletePoint(f.id, cfg.n);
+          }},"Ta bort")));
+    }},"Ta bort punkt");
+    delWrap.append(ask);
+  }
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, badge, h("h2",{}, (cfg.isNew ? "Ny punkt" : "Punkt " + cfg.n)), h("span",{class:"count"}, f.name)),
+    pick.grid, pick.buttons,
+    !ctl && !notes ? h("div",{class:"field"}, h("label",{},"Prioritering"), prioBox) : null,
+    notes ? null : h("div",{class:"field"}, h("label",{},"Kategori"), chips, !CATS.length ? h("small",{class:"muted"},"Skapa egna kategorier med namn och färg, t.ex. Dörr eller Skyltning.") : null),
+    ctl ? h("div",{class:"field"}, h("label",{},"Objektstyp"), typeBox) : null,
+    h("div",{class:"field"}, h("label",{for:"desc"},"Beskrivning"), desc, sugg),
+    ctl ? checkWrap : null,
+    h("div",{class:"row savebar"}, h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"), saveBtn),
+    !cfg.isNew && f.drawing ? h("div",{class:"row"},
+      h("button",{class:"btn ghost",onclick:()=>startMove(cfg.n)}, placed(existing) ? "Flytta punkten" : "Placera på ritningen"),
+      h("button",{class:"btn ghost",onclick:()=>startPlacing(cfg.n)},"+ Underpunkt")) : null,
+    !cfg.isNew && existing.extra.length ? h("div",{class:"subs"}, h("small",{class:"muted"},"Underpunkter:"),
+      existing.extra.map((e, i) => h("button",{class:"subchip",style:"--cc:" + catColor(existing),onclick:()=>openSheet({type:"sub", n: cfg.n, k: i})},
+        subLabel(cfg.n, i), e.photos.length ? h("small",{}, "· " + e.photos.length + " foto") : null))) : null,
+    delWrap);
+}
+
+// The requirements of an object type, each with Godkänt utfört / Ej godkänt utfört / Ej aktuellt (marks is changed in place)
+function checklist(t, marks){
+  const box = h("div",{class:"checks"});
+  const sum = h("span",{}); const fillBtn = h("button",{type:"button",class:"linkbtn",style:"justify-self:start"});
+  const update = () => {
+    const c = t.items.map(it => CHECK[marks[it.i]] ? marks[it.i] : null);
+    const done = c.filter(Boolean).length, fail = c.filter(x => x === "f").length, open = t.items.length - done;
+    sum.textContent = done + " av " + t.items.length + " krav bedömda" + (fail ? " · " + fail + " ej godkända" : "");
+    sum.className = fail ? "bad" : "";
+    fillBtn.textContent = "Markera övriga " + open + " som Ej aktuellt"; fillBtn.hidden = !open || !done;
+  };
+  const items = new Map();
+  const itemEl = it => {
+    const el = h("div",{class:"creq","data-req":it.i});
+    const btns = h("div",{class:"cbtns",role:"radiogroup","aria-label":it.short});
+    const draw = () => { const cur = CHECK[marks[it.i]] ? marks[it.i] : null;
+      el.className = "creq" + (cur ? " " + { o: "ok", f: "fail", n: "na" }[cur] : "");
+      btns.replaceChildren(...["o","f","n"].map(k => h("button",{type:"button",class:"cbtn " + { o: "ok", f: "fail", n: "na" }[k] + (cur === k ? " on" : ""),role:"radio","aria-checked":cur===k?"true":"false",
+        onclick:()=>{ marks[it.i] = cur === k ? "-" : k; draw(); update(); }}, CHECK[k].label))); };
+    el.append(h("p",{}, it.text), h("small",{}, BFS + " " + it.ref),
+      ...(it.note ? [h("details",{}, h("summary",{},"Undantag och förtydliganden"), h("p",{}, it.note))] : []), btns);
+    draw(); items.set(it.i, draw); return el;
+  };
+  fillBtn.onclick = () => { t.items.forEach(it => { if (!CHECK[marks[it.i]]) { marks[it.i] = "n"; items.get(it.i)(); } }); update(); };
+  box.append(h("div",{class:"chead"}, h("b",{}, "Krav enligt " + BFS + ": " + t.name), sum),
+    h("p",{class:"muted",style:"margin:0;line-height:1.4"}, "Markera Ej aktuellt för det som inte gäller den här dörren."),
+    ...t.groups.map(g => h("div",{class:"cgroup"}, h("div",{class:"eyebrow"}, g.name), g.items.map(itemEl))),
+    fillBtn);
+  update(); return box;
+}
+
+function listSheet(){
+  const p = cur(); const multi = p.floors.length > 1;
+  const pts = allPts(p).sort((a,b)=>a.n-b.n);
+  const row = pt => {
+    const wrap = h("div",{class:"ptrow"});
+    const del = h("button",{class:"trash","aria-label":"Ta bort punkt " + pt.n,onclick:()=>{
+      wrap.replaceChildren(h("div",{class:"ptconfirm"},
+        h("span",{}, "Ta bort punkt " + pt.n + "?"),
+        h("button",{class:"btn ghost",onclick:()=>{ dropSheet(); openSheet({type:"list"}); }},"Behåll"),
+        h("button",{class:"btn danger",style:"border-color:var(--danger)",onclick:async()=>{ await deletePoint(pt.floorId, pt.n); openSheet({type:"list"}); }},"Ta bort")));
+    }}, "✕");
+    wrap.append(h("button",{class:"pt",onclick:()=>{
+        if (pt.floorId !== S.floor) { S.floor = pt.floorId; S.fitted = false; dropSheet(); render(); }
+        focusPoint(pt); openSheet({type:"point",n:pt.n}); }},
+      h("span",{class:"n"}, pt.n),
+      pt.photos.length ? thumb(pt.photos[0], 140) : h("div",{class:"ph"}),
+      h("p",{class: pt.desc ? "" : "none"}, (multi || catOf(pt)) ? h("small",{class:"fl"}, [pt.floorName && multi ? pt.floorName : null, catName(pt) || null].filter(Boolean).join(" · ")) : null, typeOf(pt) ? h("span",{style:"display:block;margin:2px 0"}, typeChip(pt)) : null, pt.desc || "Ingen beskrivning")), del);
+    return wrap;
+  };
+  return h("div",{style:"display:grid;gap:10px"},
+    h("div",{class:"shead"}, h("h2",{},"Punkter"), h("span",{class:"count"}, pk(pts.length))),
+    pts.length ? h("div",{class:"plist2"}, pts.map(row))
+    : h("p",{style:"color:var(--muted);margin:0"}, fl() && fl().drawing ? "Inga punkter än. Tryck på ritningen för att lägga till punkt 1." : "Inga punkter än. Tryck på + Nytt objekt för att lägga till punkt 1."),
+    pts.length ? h("p",{style:"margin:0;color:var(--muted);font-size:13px"},"Tryck ✕ för att ta bort en punkt. Punkterna efter får nya nummer.") : null,
+    h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"));
+}
+async function deletePoint(fid, n){
+  const p = cur(); const f = p.floors.find(x => x.id === fid); const old = (f.points||[]).find(x => x.n === n);
+  const np = renumber(withFloor(p, fid, ff => ({ points: (ff.points||[]).filter(x => x.n !== n) })));
+  replaceLocal(np); if (old) allPhotos(old).forEach(ph => store.dropImage(ph));
+  try { await store.save(np); toast("Punkt " + n + " borttagen"); } catch(e){ toast("Kunde inte spara ändringen"); }
+  dropSheet(); render();
+}
+function focusPoint(pt){
+  const f = fl(); if (!vpEl || !f.drawing || !placed(pt)) return;
+  const W = vpEl.clientWidth, H = vpEl.clientHeight;
+  S.tx = W/2 - pt.x*f.drawing.w*S.scale; S.ty = H/2.6 - pt.y*f.drawing.h*S.scale; applyT();
+}
+
+function confirmRow(wrap, back, text, label, action){
+  wrap.replaceChildren(h("p",{style:"margin:0 0 8px;color:var(--muted);font-size:14px"}, text),
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:()=>wrap.replaceChildren(back)},"Behåll"),
+      h("button",{class:"btn danger",style:"border-color:var(--danger)",onclick:action}, label)));
+}
+async function saveProject(np, msg){ replaceLocal(np); try { await store.save(np); if (msg) toast(msg); } catch(e){ toast("Kunde inte spara"); } dropSheet(); render(); }
+
+// One floor: rename, reorder, delete
+function floorSheet(fid){
+  const p = cur(); const f = p.floors.find(x => x.id === fid) || fl();
+  const idx = p.floors.findIndex(x=>x.id===f.id), only = p.floors.length === 1;
+  const fname = h("input",{type:"text",id:"fname"}); fname.value = f.name;
+  const move = d => { const j = idx + d; if (j<0 || j>=p.floors.length) return;
+    const floors = [...p.floors]; [floors[idx], floors[j]] = [floors[j], floors[idx]]; saveProject({ ...p, floors, updated: Date.now() }); };
+  const wrap = h("div",{});
+  const n = (f.points||[]).length;
+  const del = h("button",{class:"btn danger",onclick:()=>confirmRow(wrap, del,
+    only ? "Det här är projektets enda våningsplan, så hela projektet tas bort med dess " + n + " punkter."
+         : f.name + " och dess " + n + " punkter tas bort. Punkterna på andra plan får nya nummer.",
+    only ? "Ta bort projektet" : "Ta bort " + f.name, async()=>{
+      const done = busy("Tar bort…");
+      try {
+        if (only) { await store.remove(p); S.projects = S.projects.filter(x=>x.id!==p.id); S.view = "list"; dropSheet(); render(); toast("Projektet är borttaget"); return; }
+        [f.drawing, f.drawing && f.drawing.pdf, ...(f.points||[]).flatMap(allPhotos)].filter(Boolean).forEach(i => store.dropImage(i));
+        const np = renumber({ ...p, floors: p.floors.filter(x => x.id !== f.id), updated: Date.now() });
+        S.floor = np.floors[Math.max(0, idx-1)].id; S.fitted = false;
+        await saveProject(np, f.name + " är borttaget");
+      } catch(e){ toast("Kunde inte ta bort"); } finally { done(); }
+    })}, "Ta bort våningsplanet");
+  wrap.append(del);
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{}, f.name), h("span",{class:"count"}, pk(n))),
+    !isNotes(p) ? h("label",{class:"btn ghost",for:"planInput",role:"button",tabindex:"0",onclick:()=>{ S.floor = f.id; resetPlanInput("replace"); }},(f.drawing ? "Byt ritning för " : "Lägg till ritning för ") + f.name) : null,
+    h("div",{class:"field"}, h("label",{for:"fname"},"Namn"), fname),
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"),
+      h("button",{class:"btn primary",onclick:()=>saveProject(withFloor(p, f.id, () => ({ name: fname.value.trim() || f.name })), "Namnet är sparat")},"Spara namn")),
+    !only ? h("div",{class:"row"},
+      h("button",{class:"btn ghost",disabled:idx===0,onclick:()=>move(-1)},"← Flytta vänster"),
+      h("button",{class:"btn ghost",disabled:idx===p.floors.length-1,onclick:()=>move(1)},"Flytta höger →")) : null,
+    wrap);
+}
+
+// Project: rename, see/manage floors, delete
+function projectSheet(){
+  const p = cur();
+  const name = h("input",{type:"text",id:"pname"}); name.value = p.name;
+  const infoE = infoFields(p.info || { inspector: "" });
+  const pWrap = h("div",{});
+  const pDel = h("button",{class:"btn danger",onclick:()=>confirmRow(pWrap, pDel,
+    "Projektet med " + p.floors.length + " våningsplan och " + ptCount(p) + " punkter tas bort för gott.", "Ta bort projektet", async()=>{
+      const done = busy("Tar bort…");
+      try { await store.remove(p); S.projects = S.projects.filter(x=>x.id!==p.id); S.view="list"; dropSheet(); render(); toast("Projektet är borttaget"); }
+      catch(e){ toast("Kunde inte ta bort"); } finally { done(); }
+    })}, "Ta bort projektet");
+  pWrap.append(pDel);
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{},"Projekt")),
+    h("div",{class:"field"}, h("label",{},"Typ av projekt"),
+      h("div",{class:"cats types",role:"radiogroup","aria-label":"Typ av projekt"}, Object.entries(KINDS).filter(([k]) => k !== "notes" || isNotes(p) || !p.floors.some(f => f.drawing)).map(([k, v]) =>
+        h("button",{class:"cat" + (projKind(p) === k ? " on" : ""),id:"pkind-" + k,role:"radio","aria-checked":projKind(p)===k?"true":"false",onclick:async()=>{
+          if (projKind(cur()) === k) return;
+          const np = { ...cur(), kind: k, updated: Date.now() }; replaceLocal(np);
+          try { await store.save(np); } catch(err){ toast("Kunde inte spara"); }
+          render(); openSheet({ type:"project" });
+          toast(k === "ctl" ? "Projektet är nu en utförandekontroll" : k === "notes" ? "Projektet är nu anteckningar. Kategorier, prioritering och kontrollpunkter sparas men visas inte." : "Projektet är nu en inventering. Eventuella kontrollpunkter sparas men visas inte."); }}, v.name)))),
+    h("div",{class:"field"}, h("label",{for:"pname"},"Uppdragsnamn"), name),
+    infoE.els,
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"),
+      h("button",{class:"btn primary",onclick:()=>saveProject({ ...p, name: name.value.trim() || p.name, info: infoE.read(), updated: Date.now() }, "Uppgifterna är sparade")},"Spara uppgifter")),
+    h("div",{class:"field"}, h("label",{},"Våningsplan"),
+      h("div",{class:"flist"}, p.floors.map(f => h("button",{class:"frow",onclick:()=>openSheet({type:"floor",fid:f.id})},
+        h("b",{}, f.name), h("span",{}, pk((f.points||[]).length)), h("i",{}, "Ändra eller ta bort ›"))))),
+    !isNotes(p) ? h("button",{class:"btn ghost",onclick:()=>openSheet({type:"cats"})},"Kategorier (" + (p.cats||[]).length + ")") : null,
+    isNotes(p) ? null : h("div",{class:"field"}, h("label",{},"Export"),
+      ...[!isNotes(p) ? ["cat","Ta med kategorier (färger på numren och färgförklaring)"] : null, !isCtl(p) && !isNotes(p) ? ["prio","Ta med prioritering (kolumn i tabellen)"] : null, isCtl(p) ? ["chk","Ta med objekttyper och kontrollpunkter (" + BFS + ")"] : null].filter(Boolean).map(([key, label]) =>
+        h("label",{class:"check"}, h("input",{type:"checkbox",id:"exp-" + key,checked:expOpt(p)[key],onchange:async e=>{
+          const np = { ...cur(), exp: { ...(cur().exp || {}), [key]: e.target.checked }, updated: Date.now() }; replaceLocal(np);
+          try { await store.save(np); toast("Exportinställningen är sparad"); } catch(err){ toast("Kunde inte spara"); } }}), label))),
+    h("label",{class:"check"}, h("input",{type:"checkbox",id:"camfirst",checked:camFirst(),onchange:e=>{ try { localStorage.setItem("rp-cam", e.target.checked ? "1" : "0"); } catch(err){} }}),
+      "Öppna kameran direkt när jag sätter en ny punkt"),
+    IS_APP ? h("label",{class:"check"}, h("input",{type:"checkbox",id:"album",checked:albumOn(),onchange:e=>{ try { localStorage.setItem("rp-album", e.target.checked ? "1" : "0"); } catch(err){} }}),
+      "Spara även nya foton i telefonens bildalbum") : null,
+    downloads ? h("button",{class:"btn ghost",onclick:()=>backupProjects([p], p.name)},"Säkerhetskopiera projektet") : null,
+    pWrap);
+}
+
+/* ---------- New project / new floor ---------- */
+// First choice: with a drawing (PDF or picture) or without one (the objects as a list)
+function startSheet(cfg){
+  const isProject = cfg.mode === "project";
+  if (isProject && !cfg.kind) return h("div",{style:"display:grid;gap:12px"},
+    h("div",{class:"shead"}, h("h2",{},"Nytt projekt")),
+    h("button",{class:"choice",id:"kind-inv",onclick:()=>openSheet({ type:"start", mode:"project", kind:"inv" })},
+      h("b",{}, KINDS.inv.name), h("span",{},"Dokumentera brister och iakttagelser med foto, beskrivning, kategori och prioritering.")),
+    h("button",{class:"choice",id:"kind-ctl",onclick:()=>openSheet({ type:"start", mode:"project", kind:"ctl" })},
+      h("b",{}, KINDS.ctl.name), h("span",{},"Som inventering, men objekten kan få en typ, till exempel Dörr, med kontrollpunkter att bocka av enligt " + BFS + ".")),
+    h("button",{class:"choice",id:"kind-notes",onclick:()=>openSheet({ type:"newplan", file:null, pdf:null, mode:"project", kind:"notes" })},
+      h("b",{}, KINDS.notes.name), h("span",{},"Snabba anteckningar utan ritning: ta ett foto och skriv eller tala in en beskrivning.")),
+    h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"));
+  return h("div",{style:"display:grid;gap:12px"},
+    h("div",{class:"shead"}, h("h2",{}, isProject ? KINDS[cfg.kind].newName : "Nytt våningsplan")),
+    h("label",{class:"choice",for:"planInput",role:"button",tabindex:"0",id:"withdrawing",onclick:()=>resetPlanInput(cfg.mode, cfg.kind)},
+      h("b",{},"Med ritning"), h("span",{},"Välj en PDF eller bild och placera objekten på ritningen.")),
+    h("button",{class:"choice",id:"nodrawing",onclick:()=>openSheet({ type:"newplan", file:null, pdf:null, mode:cfg.mode, kind:cfg.kind })},
+      h("b",{},"Utan ritning"), h("span",{},"Lägg till objekten i en lista, utan att placera dem. En ritning kan läggas till senare.")),
+    isProject ? h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:()=>openSheet({ type:"start", mode:"project" })},"‹ Tillbaka"), h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"))
+      : h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"));
+}
+let planMode = "project", planKind = "inv";
+function resetPlanInput(mode, kind){ planMode = mode; planKind = KINDS[kind] ? kind : "inv"; $("#planInput").value = ""; }
+$("#planInput").addEventListener("change", async e => {
+  const file = e.target.files[0]; if (!file) return;
+  let pdf = null;
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+    try { pdf = await openPdf(file); } catch(err){ return toast("PDF:en gick inte att öppna"); }
+  }
+  openSheet({ type:"newplan", file, pdf, mode: planMode, kind: planKind });
+});
+function newPlanSheet(cfg){
+  const file = cfg.file, pdf = cfg.pdf, pages = pdf ? pdf.numPages : 1, isProject = cfg.mode === "project";
+  const p = isProject ? null : cur();
+  const startNo = isProject ? 1 : p.floors.length + 1;
+  const name = h("input",{type:"text",id:"newname"}); name.value = isProject ? (file ? file.name.replace(/\.[^.]+$/, "") : "") : "Plan " + startNo;
+  if (isProject && !file) name.placeholder = "t.ex. Kv. Eken 4";
+  const fname = h("input",{type:"text",id:"newfloor"}); fname.value = "Plan 1";
+  const page = h("input",{type:"text",id:"pageno",inputmode:"numeric"}); page.value = "1";
+  let allPages = false;
+  const infoF = infoFields({});
+  const pageField = h("div",{class:"field"}, h("label",{for:"pageno"},"Sida (1–" + pages + ")"), page);
+  const allBox = h("label",{class:"check"}, h("input",{type:"checkbox",id:"allpages",onchange:e=>{ allPages = e.target.checked; pageField.hidden = allPages; }}),
+    "Lägg till alla " + pages + " sidor som egna våningsplan");
+  if (cfg.mode === "replace") return replacePlanSheet(cfg);
+  const go = h("button",{class:"btn primary",onclick:async()=>{
+    go.disabled = true; const done = busy(!file ? "Skapar…" : pdf ? "Läser in PDF…" : "Laddar upp ritning…");
+    try {
+      const list = pdf ? (allPages ? Array.from({length:pages},(_,i)=>i+1) : [Math.min(pages, Math.max(1, parseInt(page.value,10)||1))]) : [null];
+      const floors = [];
+      for (let i = 0; i < list.length; i++) {
+        if (list.length > 1) done.set("Läser in sida " + (i+1) + " av " + list.length + "…");
+        if (!file) { floors.push({ id: uid(), name: isProject ? (fname.value.trim() || "Plan 1") : (name.value.trim() || "Plan " + startNo), drawing: null, points: [] }); continue; }
+        const img = pdf ? await pdfPageImage(pdf, list[i]) : await shrink(file, 4000);
+        const stored = await store.putImage(img.blob);
+        let pdfRef = null; if (pdf) { const one = await singlePagePdf(file, list[i]); pdfRef = { pdf: await store.putImage(one.blob), page: one.page }; }
+        const nm = list.length > 1 ? "Plan " + (startNo + i) : (isProject ? (fname.value.trim() || "Plan 1") : (name.value.trim() || "Plan " + startNo));
+        floors.push({ id: uid(), name: nm, drawing: { ...stored, w: img.w, h: img.h, ...(pdfRef || {}) }, points: [] });
+      }
+      let np;
+      if (isProject) { np = { id: uid(), name: name.value.trim() || "Projekt", kind: KINDS[cfg.kind] ? cfg.kind : "inv", info: infoF.read(), created: Date.now(), updated: Date.now(), cats: lastCats(), floors }; S.projects.push(np); }
+      else { np = { ...cur(), floors: [...cur().floors, ...floors], updated: Date.now() }; replaceLocal(np); }
+      await store.save(np);
+      dropSheet();
+      S.current = np.id; S.view = "plan"; S.floor = floors[0].id; S.fitted = false; S.pending = null; render();
+      toast(floors.length > 1 ? floors.length + " våningsplan tillagda" : floors[0].name + " tillagt");
+    } catch(err){ toast((file ? "Ritningen kunde inte sparas: " : "Kunde inte spara: ") + (err.code || err.message || "okänt fel")); go.disabled = false; }
+    finally { done(); }
+  }}, isProject ? "Skapa projekt" : "Lägg till våningsplan");
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{}, isProject ? KINDS[KINDS[cfg.kind] ? cfg.kind : "inv"].newName : "Nytt våningsplan")),
+    !file ? h("p",{class:"note",style:"margin:0"}, (isProject ? cfg.kind === "notes" : isNotes(cur())) ? "Anteckningar läggs i en lista i nummerordning, med foton och beskrivning. Beskrivningen kan du skriva eller tala in med mikrofonen på telefonens tangentbord."
+      : "Utan ritning: objekten läggs i en lista i nummerordning. Du kan lägga till en ritning senare.") : null,
+    h("div",{class:"field"}, h("label",{for:"newname"}, isProject ? "Uppdragsnamn" : "Namn på våningsplanet"), name),
+    isProject ? infoF.els : null,
+    isProject && !(pdf && pages > 1) ? h("div",{class:"field"}, h("label",{for:"newfloor"},"Första våningsplanet"), fname) : null,
+    pdf && pages > 1 ? [allBox, pageField] : null,
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"), go));
+}
+function replacePlanSheet(cfg){
+  const file = cfg.file, pdf = cfg.pdf, pages = pdf ? pdf.numPages : 1;
+  const p = cur(); const f = fl();
+  const page = h("input",{type:"text",id:"pageno",inputmode:"numeric"}); page.value = "1";
+  const go = h("button",{class:"btn primary",onclick:async()=>{
+    go.disabled = true; const done = busy(pdf ? "Läser in PDF…" : "Laddar upp ritning…");
+    try {
+      const pno = Math.min(pages, Math.max(1, parseInt(page.value,10)||1));
+      const img = pdf ? await pdfPageImage(pdf, pno) : await shrink(file, 4000);
+      const stored = await store.putImage(img.blob);
+      let pdfRef = null; if (pdf) { const one = await singlePagePdf(file, pno); pdfRef = { pdf: await store.putImage(one.blob), page: one.page }; }
+      const old = f.drawing, had = !!old;
+      const np = withFloor(cur(), f.id, () => ({ drawing: { ...stored, w: img.w, h: img.h, ...(pdfRef || {}) } }));
+      replaceLocal(np); await store.save(np); if (old) { store.dropImage(old); if (old.pdf) store.dropImage(old.pdf); }
+      dropSheet(); S.fitted = false; render(); toast(had ? "Ritningen för " + f.name + " är bytt" : "Ritningen är tillagd. Öppna objekten och välj Placera för att sätta ut dem.");
+    } catch(err){ toast("Ritningen kunde inte bytas: " + (err.code || err.message || "okänt fel")); go.disabled = false; }
+    finally { done(); }
+  }}, f.drawing ? "Byt ritning" : "Lägg till ritning");
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{}, (f.drawing ? "Byt ritning för " : "Lägg till ritning för ") + f.name)),
+    h("p",{style:"margin:0;color:var(--muted);line-height:1.4"}, !f.drawing
+      ? ((f.points||[]).length ? "Objekten finns kvar men får ingen plats automatiskt. Öppna ett objekt och välj Placera på ritningen för att sätta ut det." : "Objekten placeras sedan på ritningen.")
+      : (f.points||[]).length
+      ? "Punkterna ligger kvar på samma relativa plats. Använd en ritning med samma utsnitt, annars hamnar de fel."
+      : "Den nya ritningen ersätter den gamla."),
+    pdf && pages > 1 ? h("div",{class:"field"}, h("label",{for:"pageno"},"Sida (1–" + pages + ")"), page) : null,
+    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"), go));
+}
+function openProject(id){ S.current = id; const p = cur(); S.floor = p && p.floors[0] ? p.floors[0].id : null; S.view = "plan"; S.fitted = false; S.pending = null; render(); }
+function replaceLocal(np){ S.projects = S.projects.map(x => x.id === np.id ? np : x); }
+
+/* ---------- Export ---------- */
+// Table columns (mm): Nr | Beskrivning | Läge på ritning | Foto  — total 186 mm on A4 portrait with 12 mm margins
+// Table columns (mm). Without priority the description gets the space of the Prio column.
+let COLS = [], CI = {};
+// Without any drawing in the project there is no location column; with categories they get their own column before the description.
+// The description takes the width that is left of the 186 mm.
+function setCols(showPrio, showLoc = true, showCat = false){
+  const tight = showCat && showLoc, picW = tight ? 50 : 58;
+  COLS = [{k:"nr",t:"Nr.",w:tight ? 10 : 13}, showPrio ? {k:"prio",t:"Prio",w:11} : null, showCat ? {k:"cat",t:"Kategori",w:23} : null, {k:"desc",t:"Beskrivning",w:0},
+    showLoc ? {k:"loc",t:"Läge på ritning",w:picW} : null, {k:"photo",t:"Foto",w:picW}].filter(Boolean);
+  COLS.find(c => c.k === "desc").w = 186 - COLS.reduce((a, c) => a + c.w, 0);
+  CI = {}; COLS.forEach((c, i) => { CI[c.k] = i; });
+}
+setCols(true);
+// Export settings per project (under Mer): include categories (colours, legend) and priority (table column)
+const expOpt = p => ({ cat: !isNotes(p) && !(p && p.exp && p.exp.cat === false), prio: projKind(p) === "inv" && !(p && p.exp && p.exp.prio === false), chk: isCtl(p) && !(p && p.exp && p.exp.chk === false) });
+const ROW_H = 47, CELL_PAD = 2; // 5 objects per A4 page
+const CROP_H_MM = ROW_H - 2*CELL_PAD;
+const cropW = () => (CI.loc != null ? COLS[CI.loc].w : 58) - 2*CELL_PAD; // width of the location image, follows the column
+const CROP_SPAN = 0.30; // share of the drawing's longest side shown in each location image
+
+function fileBase(p){ return (p.name.replace(/[^\wåäöÅÄÖ\- ]+/g,"").trim() || "ritning"); }
+function drawTag(ctx, x, y, r, n, color){
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fillStyle = color || NO_CAT_COLOR; ctx.fill();
+  ctx.lineWidth = r*0.2; ctx.strokeStyle = "#fff"; ctx.stroke();
+  const L_ = String(n).length; ctx.font = `600 ${Math.round(r*(L_<=2?1.05:L_===3?0.8:0.64))}px monospace`; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillStyle = "#fff"; ctx.fillText(String(n), x, y+1);
+}
+function jpeg(canvas, q){ return { data: canvas.toDataURL("image/jpeg", q), w: canvas.width, h: canvas.height }; }
+
+// Overview tags: a small dot marks the exact spot; the number sits in a large label nearby,
+// moved aside when labels would overlap, with a leader line back to the dot.
+// Places the number labels of an overview: a label sits on its spot when there is room; where it is crowded
+// it moves aside and gets a leader line back to a dot on the spot. Coordinates are in the units of W × H.
+function layoutTags(W, H, pts){
+  const r = Math.max(W, H)/60;                         // label radius
+  const dot = Math.max(r*0.22, r*0.26);
+  const placed = [];
+  const anchors = pts.map(pt => ({ x: pt.x*W, y: pt.y*H }));
+  const clear = (x, y, self) => x > r+2 && y > r+2 && x < W-r-2 && y < H-r-2 &&
+    placed.every(o => Math.hypot(o.x-x, o.y-y) > o.rad + r + r*0.12) &&
+    anchors.every((a, j) => j === self || Math.hypot(a.x-x, a.y-y) > r + dot + r*0.15);
+  const dirs = [-90, -45, -135, 0, 180, 45, 135, 90].map(d => d*Math.PI/180);
+  const labels = pts.map((pt, i) => {
+    const a = anchors[i]; let pos = null;
+    if (clear(a.x, a.y, i)) { placed.push({ x: a.x, y: a.y, rad: r }); return { n: pt.n, a, pos: { x: a.x, y: a.y }, direct: true, color: catColor(pt) }; }
+    for (const ring of [2.5, 3.4, 4.4, 5.6, 7, 9]) {
+      for (const d of dirs) { const x = a.x + Math.cos(d)*r*ring, y = a.y + Math.sin(d)*r*ring; if (clear(x, y)) { pos = {x, y}; break; } }
+      if (pos) break;
+      for (let k = 0; k < 24 && !pos; k++) { const d = k*Math.PI/12; const x = a.x + Math.cos(d)*r*ring, y = a.y + Math.sin(d)*r*ring; if (clear(x, y)) pos = {x, y}; }
+      if (pos) break;
+    }
+    if (!pos) pos = { x: Math.min(Math.max(a.x, r+2), W-r-2), y: Math.min(Math.max(a.y - r*1.9, r+2), H-r-2) };
+    placed.push({ x: pos.x, y: pos.y, rad: r });
+    return { n: pt.n, a, pos, color: catColor(pt) };
+  });
+  return { r, dot, labels };
+}
+const labelScale = n => { const L = String(n).length; return L <= 2 ? 1.15 : L === 3 ? 0.85 : 0.68; };
+function drawOverviewTags(ctx, W, H, pts){
+  const { r, dot, labels } = layoutTags(W, H, pts);
+  for (const L of labels) {
+    if (L.direct) continue;
+    const dx = L.pos.x - L.a.x, dy = L.pos.y - L.a.y, len = Math.hypot(dx, dy) || 1;
+    ctx.beginPath(); ctx.moveTo(L.a.x, L.a.y); ctx.lineTo(L.pos.x - dx/len*r, L.pos.y - dy/len*r);
+    ctx.lineWidth = Math.max(4, r*0.2); ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.lineWidth = Math.max(2.5, r*0.11); ctx.strokeStyle = "#1d2321"; ctx.stroke();
+  }
+  for (const L of labels) {
+    if (L.direct) continue;
+    ctx.beginPath(); ctx.arc(L.a.x, L.a.y, dot, 0, Math.PI*2);
+    ctx.fillStyle = L.color; ctx.fill(); ctx.lineWidth = dot*0.5; ctx.strokeStyle = "#fff"; ctx.stroke();
+  }
+  for (const L of labels) {
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = r*0.3;
+    ctx.beginPath(); ctx.arc(L.pos.x, L.pos.y, r, 0, Math.PI*2); ctx.fillStyle = L.color; ctx.fill(); ctx.restore();
+    ctx.lineWidth = r*0.14; ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.font = `700 ${Math.round(r*labelScale(L.n))}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff"; ctx.fillText(String(L.n), L.pos.x, L.pos.y + r*0.05);
+  }
+}
+
+/* --- The drawing as PDF: kept as the original file, used for sharp location images and a vector overview --- */
+const PDF_BYTES = new Map(), PDF_DOCS = new Map();
+const pdfKey = d => thumbKey(d.pdf) || "?";
+async function pdfBytesFor(d){
+  const k = pdfKey(d);
+  if (!PDF_BYTES.has(k)) PDF_BYTES.set(k, (async () => {
+    let blob = imgBlob(d.pdf); if (!blob) { const r = await fetch(src(d.pdf)); if (!r.ok) throw new Error("PDF:en kunde inte hämtas"); blob = await r.blob(); }
+    return new Uint8Array(await blob.arrayBuffer());
+  })());
+  return PDF_BYTES.get(k);
+}
+async function pdfPageFor(d){
+  const k = pdfKey(d);
+  if (!PDF_DOCS.has(k)) PDF_DOCS.set(k, (async () => window.pdfjsLib.getDocument(pdfOpts((await pdfBytesFor(d)).slice())).promise)());
+  return (await PDF_DOCS.get(k)).getPage(d.page || 1);
+}
+// Renders a part of the drawing (fractions of the page as shown) straight from the PDF into a canvas
+async function renderPdfRegion(d, fx, fy, fw, fh, outW, outH){
+  const page = await pdfPageFor(d); const base = page.getViewport({ scale: 1 });
+  const scale = outW / (fw * base.width);
+  const vp = page.getViewport({ scale, offsetX: -fx*base.width*scale, offsetY: -fy*base.height*scale });
+  const c = document.createElement("canvas"); c.width = outW; c.height = outH;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, outW, outH);
+  await page.render({ canvasContext: x, canvas: c, viewport: vp }).promise;
+  return c;
+}
+// Whole page at a resolution that stays within what phones allow for one canvas (about 16 megapixels)
+async function renderPdfWhole(d, longSide){
+  const page = await pdfPageFor(d); const base = page.getViewport({ scale: 1 });
+  let s = longSide / Math.max(base.width, base.height);
+  const maxArea = 15.5e6; if (base.width*s * base.height*s > maxArea) s = Math.sqrt(maxArea / (base.width*base.height));
+  const vp = page.getViewport({ scale: s });
+  const c = document.createElement("canvas"); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: x, canvas: c, viewport: vp }).promise;
+  return c;
+}
+const hasPdf = d => !!(d && d.pdf && window.pdfjsLib);
+
+// Builds every image the report needs, shared by the PDF and Word writers.
+let MULTI_FLOORS = false; const p_multi = () => MULTI_FLOORS; // notes from several floors share one page: name the floor
+async function buildFloor(f){
+  const d = f.drawing; let base = null, fromPdf = false;
+  if (!d) { // no drawing: only the table rows
+    const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
+    const rows = pts.map(pt => ({ n: String(pt.n), key: pt.n*1000, note: isNote(pt), prio: pt.prio || null, desc: (isNote(pt) && p_multi(f) ? f.name + ": " : "") + (pt.desc || ""), floorName: f.name,
+      cat: catName(pt), catColor: catColor(pt), chk: checkSummary(pt), chkItems: checkItems(pt), nPhotos: pt.photos.length, crop: null, locText: "", photoSrc: pt.photos.length ? pt.photos : null, photo: null, hadPhoto: pt.photos.length > 0 }));
+    return { overview: null, noteOverview: null, rows, vector: null, noteVector: null, nMain: pts.filter(pt => !isNote(pt)).length, nNotes: pts.filter(isNote).length };
+  }
+  if (hasPdf(d)) { try { base = await renderPdfWhole(d, 4600); fromPdf = true; } catch(e) { base = null; } }
+  if (!base) {
+    const plan = await loadImg(src(d));
+    base = document.createElement("canvas"); const k = Math.min(1, 3200/Math.max(plan.naturalWidth, plan.naturalHeight));
+    base.width = Math.round(plan.naturalWidth*k); base.height = Math.round(plan.naturalHeight*k);
+    const bctx = base.getContext("2d"); bctx.fillStyle="#fff"; bctx.fillRect(0,0,base.width,base.height); bctx.drawImage(plan,0,0,base.width,base.height);
+  }
+  const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
+  const allTags = pts.flatMap(pt => places(pt).filter(placed).map(pl => ({ ...pt, n: pl.label, x: pl.x, y: pl.y })));
+  const tags = allTags.filter(t => !isNote(t)), noteTags = allTags.filter(isNote); // notes get their own drawing
+  const used = CATS.filter(c => c.id !== NOTE_CAT.id && pts.some(pt => pt.cat === c.id));
+
+  // raster overview (used in Word, and in the PDF when the drawing is not a PDF)
+  const rasterOverview = (tg, legend) => {
+    const lh = legend.length ? Math.round(Math.max(base.width, base.height) * 0.045) : 0;
+    const ov = document.createElement("canvas"); ov.width = base.width; ov.height = base.height + lh;
+    const octx = ov.getContext("2d"); octx.fillStyle = "#fff"; octx.fillRect(0,0,ov.width,ov.height); octx.drawImage(base,0,0);
+    drawOverviewTags(octx, base.width, base.height, tg);
+    if (legend.length) {
+      let lx = lh*0.4; const ly = base.height + lh/2, rr2 = lh*0.22;
+      octx.font = `600 ${Math.round(lh*0.36)}px sans-serif`; octx.textBaseline = "middle"; octx.textAlign = "left";
+      for (const c of legend) { octx.beginPath(); octx.arc(lx + rr2, ly, rr2, 0, Math.PI*2); octx.fillStyle = c.color; octx.fill();
+        octx.fillStyle = "#1d2321"; octx.fillText(c.name, lx + rr2*2.6, ly); lx += rr2*2.6 + octx.measureText(c.name).width + lh*0.6; }
+    }
+    return jpeg(ov, 0.9);
+  };
+  const overview = rasterOverview(tags, used);
+  const noteOverview = noteTags.length ? rasterOverview(noteTags, []) : null;
+
+  // location images: cut from the PDF itself when there is one, otherwise from the picture
+  const cropPx = fromPdf ? 1000 : 900, cropPy = Math.round(cropPx*CROP_H_MM/cropW());
+  const items = pts.flatMap(pt => places(pt).map(item => ({ pt, item })));
+  const rows = items.map(({ pt, item }) => ({ n: item.label, key: pt.n*1000 + item.k + 1, note: isNote(pt), prio: pt.prio || null, desc: (isNote(pt) && p_multi(f) ? f.name + ": " : "") + (pt.desc || ""), floorName: f.name,
+    cat: catName(pt), catColor: catColor(pt), chk: item.k < 0 ? checkSummary(pt) : null, chkItems: item.k < 0 ? checkItems(pt) : null, nPhotos: item.photos.length, crop: null, locText: placed(item) ? "" : "Ej placerad på ritningen", photo: item.photos.length ? item.photos : null, hadPhoto: item.photos.length > 0, _pt: pt, _item: item }));
+  await inParallel(rows.filter(r => placed(r._item)), fromPdf ? 3 : 6, async row => {
+    const { _pt: pt, _item: item } = row;
+    const sw = Math.max(base.width, base.height) * CROP_SPAN, sh = sw*CROP_H_MM/cropW();
+    const sx = item.x*base.width - sw/2, sy = item.y*base.height - sh/2;
+    let cc = null;
+    if (fromPdf) { try { cc = await renderPdfRegion(d, sx/base.width, sy/base.height, sw/base.width, sh/base.height, cropPx, cropPy); } catch(e) { cc = null; } }
+    if (!cc) { cc = document.createElement("canvas"); cc.width = cropPx; cc.height = cropPy;
+      const c0 = cc.getContext("2d"); c0.fillStyle="#fff"; c0.fillRect(0,0,cropPx,cropPy); const sc = cropPx / sw;
+      c0.drawImage(base, -sx*sc, -sy*sc, base.width*sc, base.height*sc); }
+    const cx = cc.getContext("2d"); const u = cropPx/900; // sizes below are designed for 900 px
+    const rr = cropPx/22;
+    drawTag(cx, cropPx/2, cropPy/2, rr*1.25, item.label, catColor(pt));
+    { const iw = cropPx*0.30, ih = iw*base.height/base.width, hb = 30*u, pd = 8*u;
+      const pw = iw + 2*pd, ph = ih + 2*pd + hb, px = cropPx - pw - 14*u, py = cropPy - ph - 14*u;
+      cx.save(); cx.shadowColor = "rgba(0,0,0,.45)"; cx.shadowBlur = 18*u; cx.shadowOffsetY = 4*u;
+      cx.fillStyle = "#e4e7e5"; cx.fillRect(px, py, pw, ph); cx.restore();
+      cx.fillStyle = "#1d2321"; cx.fillRect(px, py, pw, hb);
+      cx.fillStyle = "#fff"; cx.font = `600 ${Math.round(19*u)}px sans-serif`; cx.textAlign = "left"; cx.textBaseline = "middle";
+      cx.fillText("ÖVERSIKT", px + pd, py + hb/2 + 1);
+      const ix = px + pd, iy = py + hb + pd;
+      cx.fillStyle = "#fff"; cx.fillRect(ix, iy, iw, ih);
+      cx.globalAlpha = 0.55; cx.drawImage(base, ix, iy, iw, ih); cx.globalAlpha = 1;
+      const k2 = iw/base.width;
+      const rx = ix + Math.max(0,sx)*k2, ry = iy + Math.max(0,sy)*k2;
+      const rw = Math.min(sx+sw, base.width) - Math.max(0,sx), rh = Math.min(sy+sh, base.height) - Math.max(0,sy);
+      cx.fillStyle = "rgba(226,85,27,.18)"; cx.fillRect(rx, ry, rw*k2, rh*k2);
+      cx.lineWidth = 4*u; cx.strokeStyle = "#e2551b"; cx.strokeRect(rx, ry, rw*k2, rh*k2);
+      cx.lineWidth = 3*u; cx.strokeStyle = "#1d2321"; cx.strokeRect(px, py, pw, ph); }
+    row.crop = jpeg(cc, 0.8);
+  });
+  rows.forEach(r => { r.photoSrc = r.photo; r.photo = null; }); // photos are encoded later, at a quality that keeps the file under the size limit
+  rows.forEach(r => { delete r._pt; delete r._item; });
+  const vec = fromPdf && window.PDFLib;
+  return { overview, noteOverview, rows, vector: vec ? { drawing: d, tags, used } : null, noteVector: vec && noteTags.length ? { drawing: d, tags: noteTags, used: [] } : null,
+    nMain: pts.filter(pt => !isNote(pt)).length, nNotes: pts.filter(isNote).length };
+}
+async function inParallel(list, limit, fn){ let i = 0; await Promise.all(Array.from({ length: Math.min(limit, list.length) }, async () => { while (i < list.length) await fn(list[i++]); })); }
+async function buildReport(p){
+  const o = expOpt(p); useCats(o.cat ? p : null); setCols(o.prio, p.floors.some(f => f.drawing), o.cat && allPts(p).some(pt => catOf(pt))); // without categories every number gets the same colour
+  const overviews = [], rows = [], groups = [];
+  const built = [];
+  MULTI_FLOORS = p.floors.length > 1;
+  for (const f of p.floors) built.push(await buildFloor(f)); // one floor at a time keeps memory down
+  const notes = [], noteOverviews = [];
+  for (const [fi, f] of p.floors.entries()) { const r = built[fi]; if (r.overview) overviews.push({ name: f.name, img: r.overview, vector: r.vector, count: r.nMain });
+    if (r.noteOverview) noteOverviews.push({ name: f.name, img: r.noteOverview, vector: r.noteVector, count: r.nNotes, note: true });
+    if (!o.chk) r.rows.forEach(x => { x.chk = null; x.chkItems = null; }); // setting under Mer: leave out types and checkpoints
+    rows.push(...r.rows);
+    groups.push({ name: f.name, rows: r.rows.filter(x => !x.note) }); notes.push(...r.rows.filter(x => x.note)); }
+  rows.sort((a,b)=>a.key-b.key);
+  if (notes.length) groups.push({ name: "Noteringar", note: true, rows: notes.sort((a,b) => a.key - b.key) });
+  return { name: p.name, title: KINDS[projKind(p)].title, info: p.info || {}, date: (p.info && p.info.date) || new Date().toLocaleDateString("sv-SE"), overviews, noteOverviews, rows, groups: groups.filter(g => g.rows.length), multi: p.floors.length > 1 };
+}
+const pk = n => n + (n === 1 ? " punkt" : " punkter");
+// Report style (PDF and Word): Arial/Helvetica 10 pt black, main headings bold 22 pt between red lines,
+// tables without fill or vertical lines: bold header between thick lines, thin lines between rows, thick line at the end.
+const RS = { red: "#F9423A", h1: 22, body: 10, cap: 8, thick: 1.5, thin: 0.75 };
+const footText = R => [R.info && R.info.nr, R.name].filter(Boolean).join(" • ");
+const hexRgb = h6 => [1,3,5].map(i => parseInt(h6.slice(i, i+2), 16));
+// Several photos share the photo cell: 1 fills it, 2 side by side, 3–4 in a grid, more shows "+N"
+// Photo quality steps for exports, best first: [longest side in px, JPEG quality].
+// The export uses the best step that keeps the file under 20 MB, but never goes below the last one,
+// where details such as door labels are still readable.
+const PHOTO_LEVELS = [[1500, .85], [1200, .82], [1000, .8], [800, .78], [650, .72], [520, .66], [420, .6]];
+const MAX_EXPORT = 20 * 1024 * 1024;
+async function collage(list, level = PHOTO_LEVELS[3]){
+  const [maxPx, q] = level;
+  const W = Math.round(maxPx * 0.9), H = Math.round(W * (ROW_H - 2*CELL_PAD) / (COLS[CI.photo].w - 2*CELL_PAD));
+  const imgs = []; for (const ph of list.slice(0, 4)) { try { imgs.push(await loadImg(src(ph))); } catch(e){} }
+  if (!imgs.length) return null;
+  if (imgs.length === 1) { const im = imgs[0]; const c = document.createElement("canvas"); const k = Math.min(1, maxPx/Math.max(im.naturalWidth, im.naturalHeight));
+    c.width = Math.round(im.naturalWidth*k); c.height = Math.round(im.naturalHeight*k); c.getContext("2d").drawImage(im,0,0,c.width,c.height); return jpeg(c, q); }
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0,0,W,H);
+  const g = Math.round(W/90), cols = 2, rows = imgs.length === 2 ? 1 : 2, tw = (W - g)/cols, th = (H - g*(rows-1))/rows;
+  imgs.forEach((im, i) => { const cx = (i % cols)*(tw+g), cy = Math.floor(i/cols)*(th+g);
+    const s2 = Math.max(tw/im.naturalWidth, th/im.naturalHeight), sw = tw/s2, sh = th/s2;
+    x.drawImage(im, (im.naturalWidth-sw)/2, (im.naturalHeight-sh)/2, sw, sh, cx, cy, tw, th); });
+  if (list.length > 4) { const cx = tw+g, cy = th+g; x.fillStyle = "rgba(0,0,0,.55)"; x.fillRect(cx, cy, tw, th);
+    x.fillStyle = "#fff"; x.font = `700 ${Math.round(th*0.3)}px sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("+" + (list.length - 3), cx + tw/2, cy + th/2); }
+  return jpeg(c, q);
+}
+const PHOTO_IDS = new WeakMap(); let photoSeq = 0;
+const photoKey = list => list.map(ph => thumbKey(ph) || "u" + (PHOTO_IDS.get(ph) || (PHOTO_IDS.set(ph, ++photoSeq), photoSeq))).join("|");
+// Encodes every row's photos at one quality step; the same photo set is encoded once
+// Location images: made at 1000 px. Only when the photos are already at their lowest step and the file is still too big,
+// they are made smaller too (760 px and 600 px are still sharp in a cell about 50 mm wide).
+const CROP_LEVELS = [[760, .74], [600, .68]];
+async function shrinkCrops(R, ci){
+  const [px, q] = CROP_LEVELS[ci];
+  await inParallel(R.rows.filter(r => r.crop), 6, async r => {
+    if (!r._crop0) r._crop0 = r.crop; // always start from the original
+    const im = await loadImg(r._crop0.data); const k = Math.min(1, px / im.naturalWidth);
+    const c = document.createElement("canvas"); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); r.crop = jpeg(c, q);
+  });
+}
+async function encodePhotos(R, li){
+  const cache = new Map();
+  await inParallel(R.rows.filter(r => r.photoSrc), 4, async r => {
+    const k = photoKey(r.photoSrc);
+    if (!cache.has(k)) cache.set(k, collage(r.photoSrc, PHOTO_LEVELS[li]).catch(() => null));
+    r.photo = await cache.get(k);
+  });
+}
+// Picks the best quality step whose estimated file size stays under the limit, from a sample of the photos
+async function choosePhotoLevel(R, kind){
+  const b64 = d => d ? d.data.length * 0.75 : 0;
+  let fixed = 400 * 1024 + R.rows.reduce((a, r) => a + b64(r.crop), 0);
+  if (kind === "pdf") fixed += R.overviews.concat(R.noteOverviews || []).reduce((a, o) => a + (o.vector ? 50 * 1024 : b64(o.img)), 0);
+  const sets = new Map(); R.rows.forEach(r => { if (r.photoSrc) sets.set(photoKey(r.photoSrc), r.photoSrc); });
+  const uniq = [...sets.values()]; if (!uniq.length) return 0;
+  const sample = uniq.length <= 8 ? uniq : Array.from({ length: 8 }, (_, i) => uniq[Math.floor(i * uniq.length / 8)]);
+  for (let li = 0; li < PHOTO_LEVELS.length; li++) {
+    let sum = 0; for (const set of sample) { try { sum += b64(await collage(set, PHOTO_LEVELS[li])); } catch(e) {} }
+    if (fixed + sum / sample.length * uniq.length <= MAX_EXPORT * 0.96) return li;
+  }
+  return PHOTO_LEVELS.length - 1;
+}
+function fit(w, h, maxW, maxH){ const s = Math.min(maxW/w, maxH/h); return { w: w*s, h: h*s }; }
+
+// Bluebeam and similar tools often keep the drawing as markups (annotations) instead of page content.
+// Those are not part of an embedded page, so they are first drawn into the page content as vector graphics.
+function flattenAnnots(doc, page){
+  const { PDFName, PDFDict, PDFArray, PDFStream, PDFRef } = window.PDFLib;
+  const ctx = doc.context, N = PDFName.of;
+  const annots = page.node.lookupMaybe(N("Annots"), PDFArray); if (!annots) return 0;
+  let res = page.node.lookupMaybe(N("Resources"), PDFDict); if (!res) { res = ctx.obj({}); page.node.set(N("Resources"), res); }
+  let xo = res.lookupMaybe(N("XObject"), PDFDict); if (!xo) { xo = ctx.obj({}); res.set(N("XObject"), xo); }
+  const ops = []; let n = 0;
+  const num = v => (v && v.asNumber) ? v.asNumber() : 0;
+  for (let i = 0; i < annots.size(); i++) {
+    const a = annots.lookupMaybe(i, PDFDict); if (!a) continue;
+    const sub = a.lookupMaybe(N("Subtype"), PDFName); const st = sub ? sub.decodeText() : "";
+    if (["Link", "Popup", "Widget"].includes(st)) continue;
+    const flags = num(a.lookup(N("F"))); if (flags & 2 || flags & 32) continue;          // hidden / not shown
+    const ap = a.lookupMaybe(N("AP"), PDFDict); if (!ap) continue;
+    let ref = ap.get(N("N")); let app = ap.lookup(N("N"));
+    if (app instanceof PDFDict && !(app instanceof PDFStream)) { const as = a.lookupMaybe(N("AS"), PDFName); if (!as) continue; ref = app.get(as); app = app.lookup(as); }
+    if (!(app instanceof PDFStream)) continue;
+    const rectA = a.lookupMaybe(N("Rect"), PDFArray); const bboxA = app.dict.lookupMaybe(N("BBox"), PDFArray); if (!rectA || !bboxA) continue;
+    const R = [0,1,2,3].map(k => num(rectA.lookup(k))), B = [0,1,2,3].map(k => num(bboxA.lookup(k)));
+    const mA = app.dict.lookupMaybe(N("Matrix"), PDFArray); const m = mA ? [0,1,2,3,4,5].map(k => num(mA.lookup(k))) : [1,0,0,1,0,0];
+    const pts = [[B[0],B[1]],[B[2],B[1]],[B[0],B[3]],[B[2],B[3]]].map(([x,y]) => [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]]);
+    const minx = Math.min(...pts.map(p => p[0])), maxx = Math.max(...pts.map(p => p[0])), miny = Math.min(...pts.map(p => p[1])), maxy = Math.max(...pts.map(p => p[1]));
+    const rx = Math.min(R[0], R[2]), ry = Math.min(R[1], R[3]), rw = Math.abs(R[2]-R[0]), rh = Math.abs(R[3]-R[1]);
+    const sx = (maxx - minx) ? rw / (maxx - minx) : 1, sy = (maxy - miny) ? rh / (maxy - miny) : 1;
+    const name = "FlatAnnot" + (n++);
+    xo.set(N(name), ref instanceof PDFRef ? ref : ctx.register(app));
+    ops.push(`q ${sx} 0 0 ${sy} ${rx - minx*sx} ${ry - miny*sy} cm /${name} Do Q`);
+  }
+  if (!ops.length) return 0;
+  const add = ctx.register(ctx.flateStream("\n" + ops.join("\n") + "\n"));
+  const cur = page.node.get(N("Contents"));
+  if (!cur) page.node.set(N("Contents"), add);
+  else { const arr = page.node.lookup(N("Contents")); if (arr instanceof PDFArray) arr.push(add); else page.node.set(N("Contents"), ctx.obj([cur, add])); }
+  page.node.delete(N("Annots"));
+  return ops.length;
+}
+
+/* --- Hyphenation of words too long for a table cell, roughly by Swedish syllable rules:
+   break before the last consonant in front of a vowel (ga-ta, brand-cells), but keep bl, br, dr, fl, fr, gl, gr, kl, kr, kv, pl, pr, tr, tv
+   together (cells-gräns), start the next part with s + consonant after another consonant (brand-skydd), and never split ng or ck. At least two letters stay on each side. --- */
+const HY_V = /[aeiouyåäöéüæø]/i, HY_L = /[a-zåäöéüæø]/i;
+const HY_ON = new Set(["bl","br","dr","fl","fr","gr","kl","kr","kv","pl","pr","tr","tv"]);
+function hyphPoints(w){
+  const pts = [];
+  for (let i = 1; i < w.length; i++) {
+    if (!HY_V.test(w[i])) continue;
+    let j = i; while (j > 0 && HY_L.test(w[j-1]) && !HY_V.test(w[j-1])) j--;
+    if (j === i || j === 0 || !HY_V.test(w[j-1])) continue; // need vowel, consonants, vowel
+    const run = w.slice(j, i).toLowerCase();
+    // s + consonant starts the next part after another consonant (brand-skydd, dörr-stängare), but not after -ng (förings-tätning)
+    const sOn = run.length >= 3 && /^s[kptlmnv]$/.test(run.slice(-2)) && run[run.length - 3] !== "g";
+    const on = run.length >= 2 && (HY_ON.has(run.slice(-2)) || sOn) ? 2 : 1;
+    let k = i - on; if (/^(ng|ck)$/i.test(w.slice(k - 1, k + 1))) k++; // ng and ck are never split (ning-en, släck-ut)
+    if (k >= 2 && w.length - k >= 2 && !pts.includes(k)) pts.push(k);
+  }
+  return pts;
+}
+/* --- PDF, built with pdf-lib: the overview keeps the original drawing as vector graphics --- */
+async function makePdf(R, opt = {}){ // opt.tables === false: only the overview drawings
+  const { PDFDocument, StandardFonts, rgb, degrees } = window.PDFLib;
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica), bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const MM = 72/25.4, M = 12;
+  const col = hex => { const [r,g,b] = hexRgb(hex); return rgb(r/255, g/255, b/255); };
+  const grey = v => rgb(v/255, v/255, v/255);
+  const okChars = new Map();
+  const SUBST = { "≥": ">=", "≤": "<=", "→": "->", "←": "<-", "✓": "OK", "✔": "OK", "≈": "~", "Δ": "delta", "∅": "Ø", "\u00a0": " " };
+  const safe = (t, f = font) => [...String(t)].map(ch => SUBST[ch] || ch).join("").split("").map(ch => { if (!okChars.has(ch)) { try { f.encodeText(ch); okChars.set(ch, true); } catch(e) { okChars.set(ch, false); } } return okChars.get(ch) ? ch : "?"; }).join("");
+  // drawing helpers in millimetres measured from the top-left corner of the page
+  const P = { page: null, W: 0, H: 0 };
+  const newPage = (w, h) => { P.page = doc.addPage([w*MM, h*MM]); P.W = w; P.H = h; };
+  const text = (t, x, y, size, o = {}) => { const f = o.bold ? bold : font; const s = safe(t, f);
+    let tx = x*MM; const w = f.widthOfTextAtSize(s, size); if (o.align === "center") tx -= w/2; if (o.align === "right") tx -= w;
+    P.page.drawText(s, { x: tx, y: (P.H - y)*MM, size, font: f, color: o.color || grey(0) }); };
+  const rect = (x, y, w, h, o) => P.page.drawRectangle({ x: x*MM, y: (P.H - y - h)*MM, width: w*MM, height: h*MM, ...o });
+  const line = (x1, y1, x2, y2, o) => P.page.drawLine({ start: { x: x1*MM, y: (P.H - y1)*MM }, end: { x: x2*MM, y: (P.H - y2)*MM }, ...o });
+  const images = new Map();
+  const image = async (img, x, y, w, h) => { let e = images.get(img.data); if (!e) { e = await doc.embedJpg(img.data); images.set(img.data, e); }
+    P.page.drawImage(e, { x: x*MM, y: (P.H - y - h)*MM, width: w*MM, height: h*MM }); };
+  const LT = RS.thick, LN = RS.thin; // line widths in points
+  const hline = (x1, x2, y1, w) => P.page.drawLine({ start: { x: x1*MM, y: (P.H - y1)*MM }, end: { x: x2*MM, y: (P.H - y1)*MM }, thickness: w, color: grey(0) });
+  // main heading: bold 22 pt between two red lines; returns the y below it
+  const h1 = (t, x, y0, w) => { let size = RS.h1; while (size > 12 && bold.widthOfTextAtSize(safe(t, bold), size) > w*MM) size -= 1;
+    P.page.drawLine({ start: { x: x*MM, y: (P.H - y0)*MM }, end: { x: (x+w)*MM, y: (P.H - y0)*MM }, thickness: LT, color: col(RS.red) });
+    const sm = size*0.3528, base = y0 + 1.8 + sm*0.85; // room for Å, Ä, Ö above the letters
+    text(t, x, base, size, { bold: true });
+    const yb = base + sm*0.22 + 1.4;
+    P.page.drawLine({ start: { x: x*MM, y: (P.H - yb)*MM }, end: { x: (x+w)*MM, y: (P.H - yb)*MM }, thickness: LT, color: col(RS.red) });
+    return yb + 4.5; };
+  const fits = (t, width, size) => font.widthOfTextAtSize(safe(t), size) <= width*MM;
+  const wrap = (t, width, size) => { const out = []; for (const para of String(t).split(/\r?\n/)) { let cur = "";
+    for (let word of para.split(/\s+/)) { const tryS = cur ? cur + " " + word : word;
+      if (fits(tryS, width, size)) { cur = tryS; continue; }
+      if (cur) { out.push(cur); cur = ""; }
+      while (word.length > 4 && !fits(word, width, size)) { // too long for a whole line: split it with a hyphen, at a syllable when possible
+        const ok = hyphPoints(word).filter(k => fits(word.slice(0, k) + "-", width, size));
+        let k = ok.length ? ok[ok.length - 1] : word.length - 2;
+        if (!ok.length) while (k > 2 && !fits(word.slice(0, k) + "-", width, size)) k--;
+        out.push(word.slice(0, k) + "-"); word = word.slice(k); }
+      cur = word; }
+    out.push(cur); } return out; };
+
+  // overview pages
+  const overviewPage = async (ov, i, list) => {
+    const land = ov.img.w > ov.img.h; newPage(land ? 297 : 210, land ? 210 : 297);
+    const yT = h1("Översiktsritning" + (ov.note ? " – Noteringar" : "") + (R.multi ? " – " + ov.name : ""), M, M - 2, P.W - 2*M);
+    text(infoLine(R.info) || R.date, M, yT, RS.body);
+    const TOP = yT + 3 - M; // space taken above the drawing
+    const v = ov.vector; let placedVector = false;
+    if (v) {
+      try {
+        const src0 = await PDFDocument.load(await pdfBytesFor(v.drawing), { ignoreEncryption: true });
+        const sp = src0.getPage((v.drawing.page || 1) - 1);
+        const rot = ((sp.getRotation().angle % 360) + 360) % 360;
+        const cb = sp.getCropBox();
+        try { flattenAnnots(src0, sp); } catch(e) {} // markups (e.g. from Bluebeam) become part of the drawing
+        if (!sp.node.Contents()) throw new Error("no contents"); // nothing to embed as vector: use the sharp picture instead
+        const emb = await doc.embedPage(sp, { left: cb.x, bottom: cb.y, right: cb.x + cb.width, top: cb.y + cb.height });
+        try { await emb.embed(); } // embed now, so a page that cannot be embedded falls back here instead of failing the whole export
+        catch(err) { if (Array.isArray(doc.embeddedPages)) doc.embeddedPages = doc.embeddedPages.filter(x => x !== emb); throw err; }
+        const dw = rot % 180 ? cb.height : cb.width, dh = rot % 180 ? cb.width : cb.height; // as shown on screen
+        const legendH = v.used.length ? 9 : 0;
+        const f2 = fit(dw, dh, (P.W - 2*M)*MM, (P.H - 2*M - TOP - legendH - 8)*MM); const s = f2.w / dw;
+        const ox = M*MM + ((P.W - 2*M)*MM - f2.w)/2, oyTop = (P.H - M - TOP)*MM;   // top-left of the drawing, in points
+        const w = cb.width*s, h = cb.height*s;
+        // pdf-lib rotates counter-clockwise around the drawing's bottom-left corner
+        const at = { 0: [ox, oyTop - f2.h], 90: [ox, oyTop], 180: [ox + f2.w, oyTop], 270: [ox + f2.w, oyTop - f2.h] }[rot];
+        P.page.drawPage(emb, { x: at[0], y: at[1], width: w, height: h, rotate: degrees(-rot) });
+        P.page.drawRectangle({ x: ox, y: oyTop - f2.h, width: f2.w, height: f2.h, borderColor: grey(200), borderWidth: 0.5 });
+        // numbers as vector shapes on top
+        const { r, dot, labels } = layoutTags(f2.w, f2.h, v.tags);
+        const X = px => ox + px, Y = py => oyTop - py;
+        for (const L of labels) { if (L.direct) continue;
+          const dx = L.pos.x - L.a.x, dy = L.pos.y - L.a.y, len = Math.hypot(dx, dy) || 1;
+          const end = { x: X(L.pos.x - dx/len*r), y: Y(L.pos.y - dy/len*r) }, start = { x: X(L.a.x), y: Y(L.a.y) };
+          P.page.drawLine({ start, end, thickness: Math.max(1.2, r*0.2), color: rgb(1,1,1) });
+          P.page.drawLine({ start, end, thickness: Math.max(0.7, r*0.11), color: grey(29) }); }
+        for (const L of labels) { if (L.direct) continue;
+          P.page.drawCircle({ x: X(L.a.x), y: Y(L.a.y), size: dot, color: col(L.color), borderColor: rgb(1,1,1), borderWidth: dot*0.5 }); }
+        for (const L of labels) {
+          P.page.drawCircle({ x: X(L.pos.x), y: Y(L.pos.y), size: r, color: col(L.color), borderColor: rgb(1,1,1), borderWidth: r*0.14 });
+          const size = r*labelScale(L.n), s2 = safe(L.n, bold), tw = bold.widthOfTextAtSize(s2, size);
+          P.page.drawText(s2, { x: X(L.pos.x) - tw/2, y: Y(L.pos.y) - size*0.36, size, font: bold, color: rgb(1,1,1) }); }
+        if (v.used.length) { let lx = ox; const ly = oyTop - f2.h - 5*MM;
+          for (const c of v.used) { P.page.drawCircle({ x: lx + 1.6*MM, y: ly + 1.2*MM, size: 1.6*MM, color: col(c.color) });
+            const s3 = safe(c.name, bold); P.page.drawText(s3, { x: lx + 4.2*MM, y: ly, size: 9, font: bold, color: grey(29) });
+            lx += 4.2*MM + bold.widthOfTextAtSize(s3, 9) + 5*MM; } }
+        placedVector = true;
+      } catch(e) { placedVector = false; }
+    }
+    if (!placedVector) { const o = fit(ov.img.w, ov.img.h, P.W - 2*M, P.H - 2*M - TOP - 8); await image(ov.img, M + (P.W - 2*M - o.w)/2, M + TOP, o.w, o.h); }
+  };
+
+  // table pages: Nr | Prio | Kategori | Beskrivning | Läge | Foto
+  const H = 297, TM = 12, BM = 16, headH = 7.5, pad = CELL_PAD;
+  const xs = [M]; COLS.forEach(c => xs.push(xs[xs.length-1] + c.w));
+  const tx = i => xs[i] + (i === 0 ? 0 : pad); // text starts at the column edge in the first column, as in the template
+  let y = 0, firstTable = true;
+  const colHead = () => { hline(M, M+186, y, LT);
+    COLS.forEach((c, i) => text(c.t, tx(i), y + 5, RS.body, { bold: true }));
+    y += headH; hline(M, M+186, y, LT); };
+  const header = (g, cont) => {
+    newPage(210, 297); y = TM;
+    if (!cont) { y = h1(g.note ? "Noteringar" : R.multi ? g.name : R.title, M, y, 186);
+      if (firstTable) { text(infoLine(R.info) || R.date, M, y, RS.body); y += 5; firstTable = false; } }
+    colHead();
+  };
+  const endTable = () => hline(M, M+186, y, LT); // thick line where the table ends (also before a page break)
+  const tablePages = async gs => { for (const g of gs) {
+    header(g, false);
+    g.rows.forEach((row, ri) => { row._last = ri === g.rows.length - 1; });
+    for (const row of g.rows) {
+      if (y + ROW_H + checkBlockH(row) > H - BM) { endTable(); header(g, true); } // the point and its checkpoints stay on the same page
+      text(String(row.n), tx(CI.nr), y+pad+3.6, RS.body);
+      if (CI.prio != null && row.prio) text(String(row.prio), tx(CI.prio), y+pad+3.6, RS.body);
+      // long descriptions get a smaller font so the whole text fits in the row
+      let size = RS.body, lines = [];
+      for (size of [10, 9, 8, 7.5, 7]) { lines = wrap(row.desc || "Ingen beskrivning", COLS[CI.desc].w - 2*pad, size); if (lines.length <= Math.floor((ROW_H - pad - 3) / (size*0.44))) break; }
+      const maxL = Math.floor((ROW_H - pad - 3) / (size*0.44));
+      if (lines.length > maxL) { lines = lines.slice(0, maxL); lines[maxL-1] = lines[maxL-1].replace(/\s*\S*$/, "") + " …"; }
+      lines.forEach((l, li) => text(l, tx(CI.desc), y+pad + size*0.36 + li*size*0.44, size, { color: row.desc ? grey(0) : grey(130) }));
+      if (CI.cat != null && row.cat) wrap(row.cat, COLS[CI.cat].w - 2*pad, size).slice(0, maxL).forEach((l, li) => text(l, tx(CI.cat), y+pad + size*0.36 + li*size*0.44, size));
+      if (CI.loc != null) { if (row.crop) await image(row.crop, xs[CI.loc]+pad, y+pad, cropW(), CROP_H_MM);
+        else if (row.locText) text(row.locText, tx(CI.loc), y+pad+3.6, 9, { color: grey(110) }); }
+      if (row.photo) {
+        const bw = COLS[CI.photo].w - 2*pad, bh = ROW_H - 2*pad; const f = fit(row.photo.w, row.photo.h, bw, bh);
+        await image(row.photo, xs[CI.photo]+pad+(bw-f.w)/2, y+pad+(bh-f.h)/2, f.w, f.h);
+      } else if (row.hadPhoto) text("Fotot kunde inte läsas", tx(CI.photo), y+pad+3.6, 9, { color: grey(110) });
+      y += ROW_H;
+      if (row.chkItems) checkBlock(row);
+      if (row._last) endTable(); else hline(M, M+186, y, LN);
+    }
+  } };
+  // checkpoints of an object type: a small table right under the point, indented past the number column
+  const CK_X0 = M + COLS[CI.nr].w, CK_W = [186 - COLS[CI.nr].w - 46 - 30, 46, 30], CK_X = [CK_X0, CK_X0 + CK_W[0], CK_X0 + CK_W[0] + 46];
+  const ckRows = row => row.chkItems.map(it => { const tl = wrap(it.text, CK_W[0] - pad, 9), rl = wrap(it.ref, CK_W[1] - pad, 9);
+    return { it, tl, rl, rh: Math.max(tl.length, rl.length, 1) * 3.9 + 2.2 }; });
+  const checkBlockH = row => row.chkItems ? 5 + 6 + ckRows(row).reduce((a, r) => a + r.rh, 0) + 3 : 0;
+  const checkBlock = row => {
+    text("Kontrollpunkter " + row.chk.t.name.toLowerCase() + ", punkt " + row.n, CK_X[0], y + 3.6, RS.cap);
+    y += 5;
+    hline(CK_X0, M+186, y, LN);
+    ["Kontrollpunkt", "Hänvisning " + BFS, "Bedömning"].forEach((t2, i) => text(t2, CK_X[i] + (i ? pad : 0), y + 4.2, 9, { bold: true }));
+    y += 6; hline(CK_X0, M+186, y, LN);
+    for (const { it, tl, rl, rh } of ckRows(row)) {
+      tl.forEach((l, i) => text(l, CK_X[0], y+3.9 + i*3.9, 9));
+      rl.forEach((l, i) => text(l, CK_X[1]+pad, y+3.9 + i*3.9, 9));
+      text(CHECK[it.s] ? CHECK[it.s].label : "Ej bedömd", CK_X[2]+pad, y+3.9, 9, { color: CHECK[it.s] ? grey(0) : grey(110) });
+      y += rh; hline(CK_X0, M+186, y, it === row.chkItems[row.chkItems.length - 1] ? LN : 0.3);
+    }
+    y += 3;
+  };
+  // order: drawings, table, then the notes (their own drawings and table) last
+  const showOv = opt.overview !== false, showTb = opt.tables !== false;
+  if (showOv) for (const [i, ov] of R.overviews.entries()) await overviewPage(ov, i, R.overviews);
+  if (showTb) await tablePages(R.groups.filter(g => !g.note));
+  if (showOv) for (const [i, ov] of (R.noteOverviews || []).entries()) await overviewPage(ov, i, R.noteOverviews);
+  if (showTb) await tablePages(R.groups.filter(g => g.note));
+  if (!doc.getPageCount()) { newPage(210, 297); const y1 = h1(R.name, M, M, 186); text(infoLine(R.info) || R.date, M, y1, RS.body); text("Inga objekt än.", M, y1 + 8, RS.body); }
+  // footer on every page: assignment number • name | page, right-aligned in bold
+  doc.getPages().forEach((pg, i) => { P.page = pg; P.W = pg.getWidth()/MM; P.H = pg.getHeight()/MM;
+    let ft = safe(footText(R), bold); const room = (P.W - 2*M - 15) * MM; // a very long name is shortened with …
+    while (ft.length > 3 && bold.widthOfTextAtSize(ft, RS.cap) > room) ft = ft.slice(0, -2).trimEnd() + "…";
+    text(ft + "  |  " + (i + 1), P.W - M, P.H - 7, RS.cap, { bold: true, align: "right" }); });
+  return new Blob([await doc.save()], { type: "application/pdf" });
+}
+
+/* --- Word (.docx), written by hand: WordprocessingML in a stored ZIP --- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i=0;i<b.length;i++) c = CRC_T[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files, type){ // files: [{name, data:Uint8Array}]
+  const enc = new TextEncoder(); const parts = []; const central = []; let off = 0;
+  for (const f of files) {
+    const nm = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true);
+    lh.setUint32(14,crc,true); lh.setUint32(18,sz,true); lh.setUint32(22,sz,true); lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer), nm, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true);
+    ch.setUint32(16,crc,true); ch.setUint32(20,sz,true); ch.setUint32(24,sz,true); ch.setUint16(28,nm.length,true); ch.setUint32(42,off,true);
+    central.push(new Uint8Array(ch.buffer), nm);
+    off += 30 + nm.length + sz;
+  }
+  const csize = central.reduce((a,b)=>a+b.length,0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true); end.setUint32(12,csize,true); end.setUint32(16,off,true);
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+}
+function b64bytes(dataUrl){ const s = atob(dataUrl.split(",")[1]); const u = new Uint8Array(s.length); for (let i=0;i<s.length;i++) u[i] = s.charCodeAt(i); return u; }
+const esc = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+function makeDocx(R, opt = {}){ // opt.overview === false: only the tables (the drawings go in a separate PDF)
+  const enc = new TextEncoder(); const media = []; let picId = 0;
+  const EMU = 36000, TW = 56.6929; // per mm
+  const seen = new Map();
+  const img = (im, wmm, hmm) => {
+    let m = seen.get(im.data);
+    if (!m) { m = { rid: "rIdImg" + (media.length+1), file: "image" + (media.length+1) + ".jpeg" }; media.push({ ...m, data: b64bytes(im.data) }); seen.set(im.data, m); }
+    const { rid, file } = m; picId++;
+    const cx = Math.round(wmm*EMU), cy = Math.round(hmm*EMU);
+    return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${picId}" name="Bild ${picId}"/>`+
+      `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">`+
+      `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${picId}" name="${file}"/><pic:cNvPicPr/></pic:nvPicPr>`+
+      `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`+
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>`+
+      `</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+  };
+  const para = (inner, ppr="") => `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/>${ppr}</w:pPr>${inner}</w:p>`;
+  const styled = (style, inner, ppr="") => `<w:p><w:pPr><w:pStyle w:val="${style}"/>${ppr}</w:pPr>${inner}</w:p>`;
+  const run = (t, rpr="") => `<w:r><w:rPr>${rpr}</w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
+  const textParas = (t, rpr) => String(t).split(/\r?\n/).map(line => para(run(line, rpr))).join("");
+  const tw = mm => Math.round(mm*TW);
+  // borders per cell: top/bottom as "thick" (1.5 pt), "thin" (0.75 pt), "hair" (0.25 pt) or none
+  const BSZ = { thick: 12, thin: 6, hair: 2 };
+  const bd = (side, k) => k ? `<w:${side} w:val="single" w:sz="${BSZ[k]}" w:space="0" w:color="000000"/>` : `<w:${side} w:val="nil"/>`;
+  const cell = (wmm, content, opts={}) => `<w:tc><w:tcPr><w:tcW w:w="${tw(wmm)}" w:type="dxa"/>${opts.span ? `<w:gridSpan w:val="${opts.span}"/>` : ""}<w:tcBorders>${bd("top", opts.top)}${bd("left")}${bd("bottom", opts.bottom)}${bd("right")}</w:tcBorders>${opts.mar ? `<w:tcMar><w:left w:w="${tw(opts.mar)}" w:type="dxa"/></w:tcMar>` : ""}<w:vAlign w:val="${opts.v||"top"}"/></w:tcPr>${content}</w:tc>`;
+  // category column: coloured left edge and the name, smaller when its longest word would not fit (Calibri bold ≈ 0.55 em per letter)
+  const descSz = (row) => ((L) => L > 250 ? 16 : L > 190 ? 18 : 20)((row.desc || "").length * 46 / COLS[CI.desc].w);
+  // words that cannot fit on one line of a column get soft hyphens, so Word splits them with a hyphen (Calibri ≈ 0.5 em per letter)
+  const hyph = (t, wmm, hp) => { const cap = Math.floor((wmm - 2*CELL_PAD) / (hp/2 * 0.5 * 0.3528));
+    return String(t).replace(/\S+/g, w => { if (w.length <= cap) return w;
+      const pts = hyphPoints(w); const at = new Set(pts.length ? pts : Array.from({ length: Math.max(0, w.length - 3) }, (_, i) => i + 2));
+      return [...w].map((ch, i) => (at.has(i) ? "\u00AD" : "") + ch).join(""); }); };
+  const catCell = (row, b) => cell(COLS[CI.cat].w, row.cat ? para(run(hyph(row.cat, COLS[CI.cat].w, descSz(row)), `<w:sz w:val="${descSz(row)}"/>`)) : para(""), { bottom: b, mar: CELL_PAD });
+
+  // one overview page per floor; the notes get their own drawings, placed just before the notes table
+  let infoDone = false;
+  const info = () => { if (infoDone) return ""; infoDone = true; return styled("Normal", run(infoLine(R.info) || R.date), `<w:spacing w:before="0" w:after="160"/>`); };
+  const ovXml = (ov, i, list) => { const o = fit(ov.img.w, ov.img.h, 186, 225);
+    return styled("Heading1", run("Översiktsritning" + (ov.note ? " – Noteringar" : "") + (R.multi ? " – " + ov.name : ""))) + info() +
+      para(img(ov.img, o.w, o.h), `<w:jc w:val="center"/>`) +
+      `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`; };
+  let body = "";
+  if (opt.overview !== false) R.overviews.forEach((ov, i) => { body += ovXml(ov, i, R.overviews); });
+
+  // table: bold header between thick lines, thin lines between the points, thick line at the end
+  const mar = `<w:tblCellMar><w:top w:w="${tw(1.2)}" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="${tw(1.2)}" w:type="dxa"/><w:right w:w="${tw(1)}" w:type="dxa"/></w:tblCellMar>`;
+  let out = "";
+  R.groups.forEach((g, gi) => {
+  if (gi > 0) out += `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+  if (g.note && opt.overview !== false && (R.noteOverviews || []).length) out += R.noteOverviews.map((ov, i) => ovXml(ov, i, R.noteOverviews)).join("");
+  out += styled("Heading1", run(g.note ? "Noteringar" : R.multi ? g.name : R.title)) + info();
+  let tbl = `<w:tbl><w:tblPr><w:tblW w:w="${tw(186)}" w:type="dxa"/><w:tblLayout w:type="fixed"/>${mar}</w:tblPr>`;
+  tbl += `<w:tblGrid>${COLS.map(c=>`<w:gridCol w:w="${tw(c.w)}"/>`).join("")}</w:tblGrid>`;
+  tbl += `<w:tr><w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>${COLS.map((c, i) => cell(c.w, para(run(c.t, `<w:b/>`), `<w:spacing w:before="40" w:after="40"/>`), { top: "thick", bottom: "thick", mar: i ? CELL_PAD : 0 })).join("")}</w:tr>`;
+  g.rows.forEach((row, ri) => {
+    const last = ri === g.rows.length - 1, b = row.chkItems ? null : last ? "thick" : "thin";
+    const bw = COLS[CI.photo].w - 2*CELL_PAD, bh = ROW_H - 2*CELL_PAD;
+    const photo = row.photo ? (() => { const f = fit(row.photo.w, row.photo.h, bw, bh); return para(img(row.photo, f.w, f.h), `<w:jc w:val="center"/>`); })()
+      : row.hadPhoto ? para(run("Fotot kunde inte läsas", `<w:color w:val="6E6E6E"/><w:sz w:val="18"/>`)) : para("");
+    tbl += `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="${tw(ROW_H)}" w:hRule="exact"/></w:trPr>` +
+      cell(COLS[CI.nr].w, para(run(String(row.n))), { bottom: b }) +
+      (CI.prio != null ? cell(COLS[CI.prio].w, para(row.prio ? run(String(row.prio)) : ""), { bottom: b, mar: CELL_PAD }) : "") +
+      (CI.cat != null ? catCell(row, b) : "") +
+      cell(COLS[CI.desc].w, (row.desc ? textParas(hyph(row.desc, COLS[CI.desc].w, descSz(row)), `<w:sz w:val="${descSz(row)}"/>`) : para(run("Ingen beskrivning", `<w:i/><w:color w:val="6E6E6E"/>`))), { bottom: b, mar: CELL_PAD }) +
+      (CI.loc != null ? cell(COLS[CI.loc].w, row.crop ? para(img(row.crop, cropW(), CROP_H_MM)) : para(row.locText ? run(row.locText, `<w:color w:val="6E6E6E"/><w:sz w:val="18"/>`) : ""), { bottom: b, mar: CELL_PAD }) : "") +
+      cell(COLS[CI.photo].w, photo, { v: "center", bottom: b, mar: CELL_PAD }) + `</w:tr>`;
+    if (row.chkItems) { // checkpoints: a small table in a row under the point, indented past the number column
+      const sw = 186 - COLS[CI.nr].w, cw = [sw - 46 - 30, 46, 30];
+      let ct = styled("Caption", run("Kontrollpunkter " + row.chk.t.name.toLowerCase() + ", punkt " + row.n));
+      ct += `<w:tbl><w:tblPr><w:tblW w:w="${tw(sw - CELL_PAD)}" w:type="dxa"/><w:tblLayout w:type="fixed"/>${mar}</w:tblPr><w:tblGrid>${cw.map(w => `<w:gridCol w:w="${tw(w)}"/>`).join("")}</w:tblGrid>`;
+      ct += `<w:tr><w:trPr><w:cantSplit/></w:trPr>` + ["Kontrollpunkt", "Hänvisning " + BFS, "Bedömning"].map((t3, i) => cell(cw[i], para(run(t3, `<w:b/><w:sz w:val="18"/>`)), { top: "thin", bottom: "thin", mar: i ? CELL_PAD : 0 })).join("") + `</w:tr>`;
+      row.chkItems.forEach((it, k) => { const lb = k === row.chkItems.length - 1 ? "thin" : "hair";
+        ct += `<w:tr><w:trPr><w:cantSplit/></w:trPr>` + cell(cw[0], para(run(it.text, `<w:sz w:val="18"/>`)), { bottom: lb }) +
+          cell(cw[1], para(run(it.ref, `<w:sz w:val="18"/>`)), { bottom: lb, mar: CELL_PAD }) +
+          cell(cw[2], para(run(CHECK[it.s] ? CHECK[it.s].label : "Ej bedömd", `<w:sz w:val="18"/>${CHECK[it.s] ? "" : `<w:color w:val="6E6E6E"/>`}`)), { bottom: lb, mar: CELL_PAD }) + `</w:tr>`; });
+      ct += `</w:tbl>`;
+      tbl += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(COLS[CI.nr].w, para(""), { bottom: last ? "thick" : "thin" })}${cell(sw, ct + `<w:p><w:pPr><w:spacing w:before="0" w:after="80"/></w:pPr></w:p>`, { span: COLS.length - 1, bottom: last ? "thick" : "thin" })}</w:tr>`;
+    }
+  });
+  tbl += `</w:tbl>`;
+  out += tbl;
+  });
+  body += out;
+  if (!body) body = styled("Heading1", run(R.name)) + info() + styled("Normal", run("Inga objekt än."));
+
+  const m = tw(12);
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">`+
+    `<w:body>${body}${para("")}<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="${m}" w:right="${m}" w:bottom="${tw(16)}" w:left="${m}" w:header="0" w:footer="${tw(6)}" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  // footer: assignment number • name | page, right-aligned in bold 8 pt
+  const footer = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`+
+    `<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="0" w:after="0"/></w:pPr>${run(footText(R) + "  |  ", `<w:b/><w:sz w:val="16"/>`)}`+
+    `<w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
+  const red = RS.red.slice(1);
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+
+    `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:sz w:val="20"/><w:szCs w:val="20"/><w:lang w:val="sv-SE"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>`+
+    `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:sz w:val="20"/></w:rPr></w:style>`+
+    `<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:keepNext/><w:pBdr><w:top w:val="single" w:sz="12" w:space="1" w:color="${red}"/><w:bottom w:val="single" w:sz="12" w:space="1" w:color="${red}"/></w:pBdr><w:suppressAutoHyphens/><w:spacing w:before="0" w:after="160" w:line="240" w:lineRule="auto"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="44"/><w:szCs w:val="44"/></w:rPr></w:style>`+
+    `<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:style>`+
+    `<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="caption"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="120" w:after="40" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:style>`+
+    `</w:styles>`;
+  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+  const drels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>${media.map(x=>`<Relationship Id="${x.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${x.file}"/>`).join("")}</Relationships>`;
+  return zipStore([
+    { name:"[Content_Types].xml", data: enc.encode(ct) },
+    { name:"_rels/.rels", data: enc.encode(rels) },
+    { name:"word/document.xml", data: enc.encode(doc) },
+    { name:"word/styles.xml", data: enc.encode(styles) },
+    { name:"word/footer1.xml", data: enc.encode(footer) },
+    { name:"word/_rels/document.xml.rels", data: enc.encode(drels) },
+    ...media.map(x => ({ name: "word/media/" + x.file, data: x.data })),
+  ]);
+}
+
+/* --- Excel (.xlsx), written by hand: SpreadsheetML in a stored ZIP --- */
+function makeXlsx(p){
+  useCats(p);
+  const enc = new TextEncoder();
+  const pts = allPts(p).sort((a,b)=>a.n-b.n);
+  const col = i => String.fromCharCode(65 + i);
+  const cellStr = (ref, v, st) => `<c r="${ref}" t="inlineStr"${st?` s="${st}"`:""}><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
+  const cellNum = (ref, v, st) => `<c r="${ref}"${st?` s="${st}"`:""}><v>${v}</v></c>`;
+  const o = expOpt(p); if (!o.cat) useCats(null);
+  const items = pts.flatMap(pt => places(pt).map(pl => ({ pt, pl }))).sort((a, b) => (isNote(a.pt) - isNote(b.pt))); // notes last
+  const XC = [ // [header, width, cell(ref, item)]
+    ["Nr", 7, (r, { pt, pl }) => pl.k < 0 ? cellNum(r, pt.n, 2) : cellStr(r, pl.label, 2)],
+    o.prio ? ["Prio", 7, (r, { pt }) => pt.prio ? cellNum(r, pt.prio, 2) : cellStr(r, "")] : null,
+    ["Våningsplan", 16, (r, { pt }) => cellStr(r, pt.floorName)],
+    o.cat ? ["Kategori", 18, (r, { pt }) => cellStr(r, catName(pt))] : null,
+    ["Beskrivning", 60, (r, { pt }) => cellStr(r, pt.desc || "", 5)],
+    o.chk && p.floors.some(f => (f.points||[]).some(typeOf)) ? ["Objektstyp", 12, (r, { pt, pl }) => cellStr(r, pl.k < 0 && typeOf(pt) ? typeOf(pt).name : "")] : null,
+    o.chk && p.floors.some(f => (f.points||[]).some(typeOf)) ? ["Ej godkända krav (" + BFS + ")", 50, (r, { pt, pl }) => { const t = pl.k < 0 && typeOf(pt);
+      return cellStr(r, t ? t.items.filter(it => checkAt(pt, it.i) === "f").map(it => it.short + " (" + it.ref + ")").join("; ") : "", 5); }] : null,
+    ["Antal foton", 12, (r, { pl }) => cellNum(r, pl.photos.length)],
+    ["Underpunkt till", 12, (r, { pt, pl }) => pl.k < 0 ? cellStr(r, "") : cellNum(r, pt.n)],
+    p.floors.some(f => f.drawing) ? ["Läge X (%)", 12, (r, { pl }) => placed(pl) ? cellNum(r, Math.round(pl.x*1000)/10) : cellStr(r, "")] : null,
+    p.floors.some(f => f.drawing) ? ["Läge Y (%)", 12, (r, { pl }) => placed(pl) ? cellNum(r, Math.round(pl.y*1000)/10) : cellStr(r, "")] : null,
+  ].filter(Boolean);
+  const lastCol = col(XC.length - 1);
+  let rows = `<row r="1">${cellStr("A1", p.name, 3)}</row>`;
+  rows += `<row r="2">${cellStr("A2", (infoLine(p.info) ? infoLine(p.info) + " · " : "") + "Exporterad " + new Date().toLocaleDateString("sv-SE") + " · " + pk(pts.length) + (items.length > pts.length ? " och " + (items.length - pts.length) + " underpunkter" : ""), 4)}</row>`;
+  rows += `<row r="4">${XC.map((c,i) => cellStr(col(i)+"4", c[0], 1)).join("")}</row>`;
+  items.forEach((it, i) => { const r = 5 + i; rows += `<row r="${r}">` + XC.map((c, ci) => c[2](col(ci) + r, it)).join("") + `</row>`; });
+  const last = 4 + items.length;
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`+
+    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`+
+    `<cols>${XC.map((c,i) => `<col min="${i+1}" max="${i+1}" width="${c[1]}" customWidth="1"/>`).join("")}</cols>`+
+    `<sheetData>${rows}</sheetData>${pts.length ? `<autoFilter ref="A4:${lastCol}${last}"/>` : ""}</worksheet>`;
+  // second sheet: every requirement of every typed object
+  const typed = o.chk ? pts.filter(typeOf) : [];
+  let rows2 = `<row r="1">${cellStr("A1", "Kontroll mot " + BFS + " – " + p.name, 3)}</row><row r="3">${["Nr","Våningsplan","Objektstyp","Beskrivning","Krav","Hänvisning","Bedömning"].map((t, i) => cellStr(col(i) + "3", t, 1)).join("")}</row>`;
+  let r2 = 4;
+  for (const pt of typed) for (const it of typeOf(pt).items) { const c = checkAt(pt, it.i);
+    rows2 += `<row r="${r2}">${cellNum("A" + r2, pt.n, 2)}${cellStr("B" + r2, pt.floorName)}${cellStr("C" + r2, typeOf(pt).name)}${cellStr("D" + r2, pt.desc || "", 5)}${cellStr("E" + r2, it.text, 5)}${cellStr("F" + r2, BFS + " " + it.ref)}${cellStr("G" + r2, c ? CHECK[c].label : "Ej bedömd")}</row>`; r2++; }
+  const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`+
+    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`+
+    `<cols>${[7,16,12,40,70,22,18].map((w,i) => `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")}</cols>`+
+    `<sheetData>${rows2}</sheetData>${typed.length ? `<autoFilter ref="A3:G${r2-1}"/>` : ""}</worksheet>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`+
+    `<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><sz val="10"/><color rgb="FF6E6E6E"/><name val="Calibri"/></font></fonts>`+
+    `<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1D2321"/><bgColor indexed="64"/></patternFill></fill></fills>`+
+    `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>`+
+    `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`+
+    `<cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`+
+    `<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>`+
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>`+
+    `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>`+
+    `<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>`+
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>`+
+    `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const wb = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Brister" sheetId="1" r:id="rId1"/>${typed.length ? `<sheet name="Kontroll BFS 2024-7" sheetId="2" r:id="rId3"/>` : ""}</sheets>${pts.length ? `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Brister!$A$4:$${lastCol}$${last}</definedName>${typed.length ? `<definedName name="_xlnm._FilterDatabase" localSheetId="1" hidden="1">'Kontroll BFS 2024-7'!$A$3:$G$${r2-1}</definedName>` : ""}</definedNames>` : ""}</workbook>`;
+  const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${typed.length ? `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>` : ""}</Relationships>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>${typed.length ? `<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` : ""}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+  return zipStore([
+    { name:"[Content_Types].xml", data: enc.encode(ct) },
+    { name:"_rels/.rels", data: enc.encode(rels) },
+    { name:"xl/workbook.xml", data: enc.encode(wb) },
+    { name:"xl/_rels/workbook.xml.rels", data: enc.encode(wbRels) },
+    { name:"xl/styles.xml", data: enc.encode(styles) },
+    { name:"xl/worksheets/sheet1.xml", data: enc.encode(sheet) },
+    ...(typed.length ? [{ name:"xl/worksheets/sheet2.xml", data: enc.encode(sheet2) }] : []),
+  ], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+
+async function exportReport(kind){
+  const p = cur();
+  if (kind === "pdf" && !window.PDFLib) return toast("PDF-verktyget kunde inte laddas. Kontrollera internet och försök igen.");
+  if (sheetEl) { sheetEl.remove(); sheetEl = null; }
+  const label = { pdf:"PDF", docx:"Word-fil", xlsx:"Excel-fil" }[kind];
+  const done = busy("Skapar " + label + "…");
+  try {
+    let files, sizeNote = null;
+    try {
+      if (kind === "xlsx") files = [{ blob: makeXlsx(p), filename: fileBase(p) + ".xlsx", mime: MIME.xlsx }];
+      else {
+        const R = await buildReport(p);
+        const wordAlone = kind === "docx" && !window.PDFLib; // PDF tool missing: keep the drawings in Word
+        const main = () => kind === "pdf" ? makePdf(R) : makeDocx(R, wordAlone ? {} : { overview: false });
+        // photo quality: as good as possible while the file stays under 20 MB
+        let li = await choosePhotoLevel(R, wordAlone ? "pdf" : kind);
+        done.set("Skapar " + label + "… (foton)"); await encodePhotos(R, li);
+        let blob = await main();
+        while (blob.size > MAX_EXPORT && li < PHOTO_LEVELS.length - 1) { li++; done.set("Anpassar fotona för att hålla filen under 20 MB…"); await encodePhotos(R, li); blob = await main(); }
+        let ci = -1; // still too big with the photos at their lowest step: the location images too
+        while (blob.size > MAX_EXPORT && ci < CROP_LEVELS.length - 1) { ci++; done.set("Anpassar lägesbilderna för att hålla filen under 20 MB…"); await shrinkCrops(R, ci); blob = await main(); }
+        sizeNote = blob.size > MAX_EXPORT ? "Filen är större än 20 MB trots att foton och lägesbilder komprimerats så mycket som möjligt utan att detaljer går förlorade."
+          : ci >= 0 ? "Foton och lägesbilder har komprimerats något för att filen ska hålla sig under 20 MB."
+          : li > 3 ? "Fotona har komprimerats något för att filen ska hålla sig under 20 MB." : null;
+        if (kind === "pdf") files = [{ blob, filename: fileBase(p) + ".pdf", mime: MIME.pdf }];
+        else if (!wordAlone && (R.overviews.length || (R.noteOverviews || []).length)) files = [{ blob, filename: fileBase(p) + ".docx", mime: MIME.docx },
+                   { blob: await makePdf(R, { tables: false }), filename: fileBase(p) + " översiktsritning.pdf", mime: MIME.pdf }];
+        else files = [{ blob, filename: fileBase(p) + ".docx", mime: MIME.docx }];
+      }
+    } finally { useCats(cur()); setCols(true); }
+    done();
+    openSheet({ type:"ready", kind, files, sizeNote, label: files.length > 1 ? "Word och PDF" : null });
+  } catch(e){ done(); toast("Kunde inte exportera: " + (e.code || e.message || "okänt fel")); }
+}
+const MIME = { pdf:"application/pdf", docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+// The finished file: mail it (the phone's share sheet with the file attached) or save it
+function readySheet(cfg){
+  const p = cur() || { name: "", info: {} }; const label = cfg.label || { pdf:"PDF", docx:"Word-fil", xlsx:"Excel-fil" }[cfg.kind];
+  const list = (cfg.files || [{ blob: cfg.blob, filename: cfg.filename, mime: cfg.mime }]).map(x => new File([x.blob], x.filename, { type: x.mime || MIME[cfg.kind] }));
+  const many = list.length > 1;
+  const canMail = IS_APP && navigator.canShare && (() => { try { return navigator.canShare({ files: list }); } catch(e) { return false; } })();
+  const subject = cfg.subject || "Inventering – " + p.name + (p.info && p.info.nr ? " (" + p.info.nr + ")" : "");
+  const body = cfg.body || "Hej,\n\nBifogat finns inventeringsprotokollet för " + p.name + (infoLine(p.info) ? " (" + infoLine(p.info) + ")" : "") + ".\n\nMed vänliga hälsningar\n" + ((p.info && p.info.inspector) || "");
+  const bytes = list.reduce((a, f) => a + f.size, 0);
+  const size = bytes > 1048576 ? (bytes/1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(bytes/1024)) + " kB";
+  const mail = async () => {
+    try { await navigator.share({ files: list, title: subject, text: body }); dropSheet(); toast("Skickat vidare"); }
+    catch(e) { if (e && e.name === "AbortError") return; toast("Delningen gick inte att öppna. Spara filen och bifoga den i mejlet."); }
+  };
+  const save = async () => {
+    try { for (const [i, f] of list.entries()) { if (i) await new Promise(r => setTimeout(r, 400)); await downloads.save({ filename: f.name, data: f }); }
+      dropSheet(); toast(cfg.savedMsg || (many ? "Filerna är sparade" : label + (cfg.kind === "pdf" ? ":en" : "en") + " är sparad")); }
+    catch(e) { if (e && e.code === "declined") return; toast("Kunde inte spara: " + (e.code || e.message || "okänt fel")); }
+  };
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{}, label + " klar"), h("span",{class:"count"}, size)),
+    ...list.map(f => h("p",{class:"fname"}, f.name)),
+    cfg.sizeNote ? h("p",{class:"note",style:"margin:0"}, cfg.sizeNote) : null,
+    many ? h("p",{class:"muted",style:"margin:-4px 0 0;line-height:1.4"},"Tabellen kommer som Word-fil och översiktsritningarna som PDF, så att ritningarna behåller full skärpa.") : null,
+    canMail ? h("button",{class:"btn primary",onclick:mail},"Maila / dela") : null,
+    canMail ? h("p",{class:"muted",style:"margin:-6px 0 0;line-height:1.4"},(many ? "Välj e-postappen i listan. Båda filerna bifogas" : "Välj e-postappen i listan. Filen bifogas") + " och ämne och hälsning fylls i, du skriver bara in mottagaren.") : null,
+    h("button",{class:"btn " + (canMail ? "ghost" : "primary"),onclick:save}, IS_APP ? "Spara på telefonen" : (many ? "Spara filerna" : "Spara fil")),
+    !IS_APP ? h("p",{class:"muted",style:"margin:-6px 0 0;line-height:1.4"},"Här inne i Claude kan filen bara sparas. Bifoga den sedan i ett mejl, eller använd appversionen för att maila direkt.") : null,
+    h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"));
+}
+function exportSheet(){
+  const p = cur(); const n = ptCount(p);
+  return h("div",{style:"display:grid;gap:14px"},
+    h("div",{class:"shead"}, h("h2",{},"Exportera"), h("span",{class:"count"}, pk(n))),
+    h("p",{style:"margin:0;color:var(--muted);line-height:1.4"}, !p.floors.some(f => f.drawing) ? "PDF: en tabell med Nr., beskrivning och foton. Word: samma tabell som redigerbar Word-fil. Excel: en sorterbar lista med nummer, våningsplan, kategori och beskrivning." : "PDF: översikt per våningsplan och en tabell med Nr., beskrivning, läge och foton. Word: tabellen som Word-fil och översiktsritningarna som en separat PDF. Excel: en sorterbar lista med nummer, våningsplan, kategori och beskrivning."),
+    expOpt(p).chk && allPts(p).some(typeOf) ? h("p",{class:"note",style:"margin:0"}, "Objekt med objektstyp får sina kontrollpunkter i en egen rad direkt under punkten i PDF och Word, och ett eget blad i Excel.") : null,
+    h("div",{class:"exgrid"},
+      h("button",{class:"btn primary",onclick:()=>exportReport("pdf")},"PDF", h("small",{},"Protokoll")),
+      h("button",{class:"btn primary",onclick:()=>exportReport("docx")},"Word", h("small",{},"Redigerbart")),
+      h("button",{class:"btn primary",onclick:()=>exportReport("xlsx")},"Excel", h("small",{},"Lista"))),
+    h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"));
+}
+
+/* --- Backup: one .json file with projects, drawings and photos; read it on any device --- */
+function blobToDataURL(b){ return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); }); }
+async function imgToData(img){
+  if (!img) return null;
+  if (imgBlob(img)) return blobToDataURL(imgBlob(img));
+  try { const r = await fetch(src(img)); if (r.ok) return blobToDataURL(await r.blob()); } catch(e){}
+  const im = await loadImg(src(img)); const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  c.getContext("2d").drawImage(im, 0, 0); return c.toDataURL("image/jpeg", 0.9);
+}
+const SAFE_TYPES = /^(image\/(jpeg|png|webp|gif)|application\/pdf)$/;
+function dataToBlob(d){ const [head, b64] = String(d).split(","); let type = (head.match(/data:([^;]+)/)||[])[1] || "image/jpeg"; if (!SAFE_TYPES.test(type)) type = "image/jpeg";
+  const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type }); }
+async function backupProjects(list, label){
+  if (!list.length) return toast("Det finns inga projekt att säkerhetskopiera");
+  dropSheet(); const done = busy("Packar säkerhetskopia…");
+  try {
+    const out = [];
+    for (const p of list) {
+      const floors = [];
+      for (const f of p.floors) {
+        const points = [];
+        for (const pt of f.points||[]) { const photos = []; for (const ph of pt.photos) photos.push({ data: await imgToData(ph) });
+          const extra = []; for (const e of pt.extra) { const ep = []; for (const ph of e.photos) ep.push({ data: await imgToData(ph) }); extra.push({ x: e.x, y: e.y, photos: ep }); }
+          points.push({ n: pt.n, x: pt.x, y: pt.y, extra, cat: pt.cat || null, prio: pt.prio || null, desc: pt.desc || "", t: pt.t || null, photos, ...(pt.type ? { type: pt.type, checks: pt.checks || "" } : {}) }); }
+        floors.push({ name: f.name, drawing: f.drawing ? { data: await imgToData(f.drawing), w: f.drawing.w, h: f.drawing.h, ...(f.drawing.pdf ? { pdf: await imgToData(f.drawing.pdf), page: f.drawing.page || 1 } : {}) } : null, points });
+      }
+      out.push({ name: p.name, kind: projKind(p), info: p.info || {}, exp: p.exp || {}, created: p.created, updated: p.updated, cats: p.cats || [], floors });
+    }
+    const json = JSON.stringify({ app: "ritningsprotokoll", version: 1, exported: new Date().toISOString(), projects: out });
+    done();
+    const fname = (label.replace(/[^\wåäöÅÄÖ\- ]+/g,"").trim() || "projekt") + " säkerhetskopia " + new Date().toLocaleDateString("sv-SE") + ".json";
+    // same choice as for exports: save the file, or mail/share it
+    openSheet({ type:"ready", kind:"json", blob: new Blob([json], { type: "application/json" }), filename: fname, mime: "application/json",
+      label: "Säkerhetskopia", savedMsg: "Säkerhetskopian är sparad",
+      subject: "Säkerhetskopia – " + label + " " + new Date().toLocaleDateString("sv-SE"),
+      body: "Säkerhetskopia från BRS - Inventeringsapp (" + list.map(p => p.name).join(", ") + ").\nLäs in den i appen med Läs in säkerhetskopia på startsidan." });
+  } catch(e){ done(); if (e && e.code === "declined") return; toast("Kunde inte göra säkerhetskopia: " + (e.code || e.message || "okänt fel")); }
+}
+const txt = (v, max = 200) => typeof v === "string" ? v.slice(0, max) : "";
+const num = v => typeof v === "number" && isFinite(v) ? v : null;
+const cleanCats = cats => Array.isArray(cats) ? cats.filter(c => c && typeof c === "object").slice(0, 100).map(c => ({ id: txt(c.id, 40) || uid(), name: txt(c.name, 40) || "Kategori",
+  color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : "#546e7a", ...(c.fixed ? { fixed: true } : {}) })) : undefined;
+const cleanInfo = i => ({ nr: txt(i && i.nr, 60), date: /^\d{4}-\d{2}-\d{2}$/.test(i && i.date) ? i.date : "", inspector: txt(i && i.inspector, 80) });
+const cleanExp = x => Object.fromEntries(["cat", "prio", "chk"].filter(k => x && typeof x[k] === "boolean").map(k => [k, x[k]]));
+$("#backupInput").addEventListener("change", async e => {
+  const file = e.target.files[0]; if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch(err) { return toast("Filen är ingen säkerhetskopia från BRS - Inventeringsapp"); }
+  if (!data || data.app !== "ritningsprotokoll" || !Array.isArray(data.projects)) return toast("Filen är ingen säkerhetskopia från BRS - Inventeringsapp");
+  const done = busy("Läser in…");
+  let count = 0, lastId = null;
+  try {
+    for (const p of data.projects) {
+      const total = p.floors.reduce((a,f) => a + 1 + f.points.reduce((b,pt) => b + pt.photos.length + (pt.extra||[]).reduce((c,e) => c + (e.photos||[]).length, 0), 0), 0); let k = 0;
+      const tick = () => done.set("Läser in " + p.name + " (" + (++k) + " av " + total + ")…");
+      const floors = [];
+      for (const f of p.floors) {
+        tick(); const drawing = f.drawing && f.drawing.data ? { ...(await store.putImage(dataToBlob(f.drawing.data))), w: num(f.drawing.w) || 1000, h: num(f.drawing.h) || 1000 } : null;
+        if (drawing && f.drawing.pdf) { drawing.pdf = await store.putImage(dataToBlob(f.drawing.pdf)); drawing.page = Math.max(1, Math.floor(num(f.drawing.page) || 1)); }
+        const points = [];
+        for (const pt of f.points) { const photos = []; for (const ph of pt.photos) { tick(); photos.push(await store.putImage(dataToBlob(ph.data))); }
+          const extra = []; for (const e of (pt.extra||[])) { const ep = []; for (const ph of (e.photos||[])) { tick(); ep.push(await store.putImage(dataToBlob(ph.data))); } extra.push({ x: num(e.x), y: num(e.y), photos: ep }); }
+          points.push({ n: num(pt.n) || points.length + 1, x: num(pt.x), y: num(pt.y), extra, cat: txt(pt.cat, 40) || null, prio: [1,2,3].includes(pt.prio) ? pt.prio : null, desc: txt(pt.desc, 2000), t: num(pt.t) || Date.now(), photos,
+            ...(OBJ_TYPES.some(t => t.id === pt.type) ? { type: pt.type, checks: String(pt.checks || "").replace(/[^ofn-]/g, "") } : {}) }); }
+        floors.push({ id: uid(), name: txt(f.name, 80) || "Plan", drawing, points });
+      }
+      const taken = new Set(S.projects.map(x => x.name));
+      const np = normalize({ id: uid(), name: (n0 => taken.has(n0) ? n0 + " (inläst)" : n0)(txt(p.name, 120) || "Projekt"), ...(KINDS[p.kind] ? { kind: p.kind } : {}), info: cleanInfo(p.info), exp: cleanExp(p.exp), created: num(p.created) || Date.now(), updated: Date.now(), cats: cleanCats(p.cats), floors });
+      S.projects.push(np); await store.save(np); count++; lastId = np.id;
+    }
+    done(); render(); toast(count === 1 ? "Projektet är inläst" : count + " projekt är inlästa");
+  } catch(err){ done(); render(); toast("Inläsningen avbröts: " + (err.code || err.message || "okänt fel") + (count ? ". " + count + " projekt hann läsas in." : "")); }
+});
+
+/* ---------- Boot ---------- */
+window.addEventListener("resize", () => { if (S.view==="plan") layoutStage(); });
+function onProjects(list){
+  // keep the view stable; replace data. Storage often just echoes our own save: then nothing needs redrawing.
+  const next = mergePending(list.map(normalize));
+  const sig = JSON.stringify(next.map(p => stripPending(p)));
+  const mine = JSON.stringify(S.projects.map(p => stripPending(p)));
+  S.projects = next;
+  if (sig === mine) return;
+  if (sheetEl) return; // don't rebuild under an open sheet
+  render();
+}
+render();
+(async () => {
+  try {
+    if (window.pdfjsLib && window.pdfjsWorker) window.pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+  } catch(e){}
+  store = Local;
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(e){}
+  render();
+  store.watch(onProjects);
+})();
+
+
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(()=>{}));
