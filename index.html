@@ -238,6 +238,7 @@ textarea{min-height:76px;resize:vertical}
 .field2 > .field{min-width:0}
 input[type=date]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:11px 12px;min-height:46px}
 @media (max-width:360px){.field2{grid-template-columns:1fr}}
+@media (max-width:380px){.hint{font-size:13px;padding:6px 12px}.bar h1{font-size:17px}.bar .btn.primary{padding:9px 11px!important;font-size:14px!important}}
 .fname{margin:0;font-family:var(--font-num);font-size:13px;color:var(--muted);overflow-wrap:anywhere}
 .sugg{display:flex;flex-direction:column;align-items:stretch;gap:6px}
 .sugg:empty{display:none}
@@ -245,9 +246,59 @@ input[type=date]{width:100%;font:inherit;font-size:16px;color:var(--ink);backgro
 .schip::before{content:"↳ ";color:var(--tag);font-weight:700}
 .schip small{color:var(--muted);font-family:var(--font-num);font-size:12px}
 img.tload{background:var(--plan-bg)}
-.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:999px;font-size:14px;z-index:40;max-width:calc(100% - 32px);text-align:center}
+.side .sitem{grid-template-columns:minmax(0,1fr)}
+.sitem .stop{min-width:0}
+.sitem .stop .cchip{flex:0 1 auto}
+.sitem .stop img{flex:none}
+.field label.check{font-size:15px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
+.check input{flex:none}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:999px;font-size:14px;z-index:40;max-width:calc(100% - 32px);text-align:center;pointer-events:none}
+body:has(.scrim) .toast{bottom:auto;top:calc(12px + env(safe-area-inset-top,0px))}
 .busy{position:fixed;inset:0;z-index:50;background:rgba(10,14,12,.35);display:grid;place-items:center}
 .busy div{background:var(--surface);color:var(--ink);padding:14px 20px;border-radius:12px;font-weight:600}
+/* Object types with requirement checklists (BFS 2024:7) */
+.tchip{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border:1px solid var(--muted);color:var(--muted);border-radius:999px;padding:1px 7px;white-space:nowrap}
+.tchip.bad{color:var(--danger);border-color:var(--danger)}
+.tchip.good{color:var(--ok);border-color:var(--ok)}
+.types .cat{--cc:var(--ink)}
+.types .cat.on{color:var(--surface)}
+.types .cat.on::before{background:var(--surface)}
+.checks{display:grid;gap:12px;border-top:1px solid var(--line);padding-top:14px}
+.chead{display:grid;gap:3px}
+.chead b{font-size:18px}
+.chead span{font-size:13px;color:var(--muted)}
+.chead span.bad{color:var(--danger);font-weight:600}
+.cgroup{display:grid;gap:8px}
+.creq{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:7px;background:var(--surface)}
+.creq.ok{border-left-color:var(--ok)}
+.creq.fail{border-left-color:var(--danger)}
+.creq.na{border-left-color:var(--muted)}
+.creq.na p{color:var(--muted)}
+.creq p{margin:0;line-height:1.4;font-size:15px}
+.creq small{font-family:var(--font-num);font-size:12px;color:var(--muted)}
+.creq details{font-size:13px;color:var(--muted);line-height:1.4}
+.creq summary{cursor:pointer;color:var(--tag);font-weight:600;font-size:13px}
+.creq details p{font-size:13px;color:var(--muted);margin-top:4px}
+.cbtns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.cbtn{border:1.5px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 4px;font-size:13px;font-weight:600;line-height:1.2;min-height:44px}
+.cbtn.ok.on{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.cbtn.fail.on{background:var(--danger);border-color:var(--danger);color:var(--surface)}
+.cbtn.na.on{background:var(--muted);border-color:var(--muted);color:var(--surface)}
+.savebar{position:sticky;bottom:0;z-index:3;background:var(--surface);padding-block:10px;box-shadow:0 -10px 10px -10px rgba(0,0,0,.25)}
+/* Floors without a drawing: the objects as a list */
+.choice{display:grid;gap:4px;text-align:left;border:1.5px solid var(--line);border-radius:var(--r);padding:14px 16px;background:var(--surface);cursor:pointer;user-select:none;-webkit-user-select:none}
+.choice b{font-size:17px}
+.choice span{color:var(--muted);font-size:14px;line-height:1.4}
+.olist{display:grid;align-content:start;gap:0;background:var(--paper)}
+.addobj{width:100%;margin-bottom:10px}
+.ocard{display:grid;grid-template-columns:auto minmax(0,1fr) 72px;gap:12px;align-items:center;padding:10px 0;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;width:100%}
+.ocard .n{font-family:var(--font-num);font-weight:600;font-size:18px;min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
+.ocard img,.ocard .ph{width:72px;height:54px;object-fit:cover;border-radius:6px;background:var(--plan-bg);display:block}
+.ocard p{margin:0;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ocard p.none{color:var(--muted);font-style:italic}
+.otop{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:3px}
+.otop:empty{display:none}
+.oprio{font-family:var(--font-num);font-size:12px;font-weight:600;color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .2s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}}}
 </style>
 
@@ -391,10 +442,6 @@ let store = Local;
 const IS_APP = true; // installed app version: can hand files to the phone's mail app
 const downloads = { async save({filename, data}){
   const file = new File([data], filename, { type: data.type || "application/pdf" });
-  if (data.type === "application/json" && navigator.canShare && navigator.canShare({ files:[file] })) { // backups: share sheet (Spara i Filer)
-    try { await navigator.share({ files:[file], title: filename }); return { status:"saved" }; }
-    catch(e){ if (e && e.name === "AbortError") throw { code:"declined" }; }
-  }
   const url = URL.createObjectURL(file); const a = document.createElement("a");
   a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 30000); return { status:"saved" };
@@ -444,13 +491,18 @@ function queuePhoto(photo, pid, ptId, subId){ UPQ.push({ photo, pid, ptId, subId
 async function runUploads(){
   if (upBusy) return; upBusy = true;
   while (UPQ.length) {
-    const job = UPQ[0]; let stored = null;
-    try { const small = await shrink(job.photo.blob); stored = await store.putImage(small.blob); }
-    catch(e) { toast("Ett foto kunde inte laddas upp. Försöker igen…"); await new Promise(r => setTimeout(r, 4000)); continue; }
+    const job = UPQ[0]; let stored = null, small = null;
+    try { small = await shrink(job.photo.blob); }
+    catch(e) { small = null; } // not a readable picture: drop it below instead of retrying forever
+    if (small) {
+      try { stored = await store.putImage(small.blob); }
+      catch(e) { toast("Ett foto kunde inte laddas upp. Försöker igen…"); await new Promise(r => setTimeout(r, 4000)); continue; }
+    }
     UPQ.shift();
     const p = S.projects.find(x => x.id === job.pid); const hit = p && findPhotoList(p, job);
-    if (!hit || !hit.list.some(ph => ph.tmp === job.photo.tmp)) { store.dropImage(stored); upPill(); continue; } // removed meanwhile
-    const swap = l => l.map(ph => ph.tmp === job.photo.tmp ? stored : ph);
+    if (!hit || !hit.list.some(ph => ph.tmp === job.photo.tmp)) { if (stored) store.dropImage(stored); upPill(); continue; } // removed meanwhile
+    if (!stored) toast("Ett foto kunde inte läsas och togs bort");
+    const swap = l => stored ? l.map(ph => ph.tmp === job.photo.tmp ? stored : ph) : l.filter(ph => ph.tmp !== job.photo.tmp);
     const np = { ...p, floors: p.floors.map(f => f !== hit.f ? f : { ...f, points: f.points.map(pt => pt !== hit.pt ? pt
       : job.subId == null ? { ...pt, photos: swap(pt.photos) } : { ...pt, extra: pt.extra.map(e => e !== hit.e ? e : { ...e, photos: swap(e.photos) }) }) }) };
     replaceLocal(np); upPill();
@@ -481,7 +533,11 @@ const OLD_CATS = [ // fixed list used by an earlier version; kept only to carry 
 ];
 const CAT_COLORS = ["#c62828","#ad1457","#6a1b9a","#283593","#1565c0","#00838f","#2e7d32","#7a8b00","#a87600","#8d4e2a","#546e7a","#1d2321"];
 let CATS = []; // categories of the open project
-const useCats = p => { CATS = (p && p.cats) || []; return CATS; };
+// "Noteringar" is always there: points you want to check with a colleague. They are grey and end up
+// on their own pages after the table in exports, apart from the defects meant for the customer.
+const NOTE_CAT = { id: "notes", name: "Noteringar", color: "#7a8580", fixed: true };
+const isNote = pt => pt && pt.cat === NOTE_CAT.id;
+const useCats = p => { CATS = [NOTE_CAT, ...((p && p.cats) || []).filter(c => c.id !== NOTE_CAT.id)]; return CATS; };
 const lastCats = () => { const p = [...S.projects].sort((a,b) => (b.updated||0) - (a.updated||0))[0]; return p && p.cats ? p.cats.map(c => ({ ...c })) : []; };
 const NO_CAT_COLOR = "#e2551b";
 const catOf = pt => CATS.find(c => c.id === pt.cat) || null;
@@ -495,6 +551,36 @@ const normPt = pt => { let q = pt; if (!Array.isArray(q.photos)) { const { photo
 const subLabel = (n, k) => k < 0 ? String(n) : n + "." + (k + 1);
 const places = pt => [{ x: pt.x, y: pt.y, k: -1, label: String(pt.n), photos: pt.photos },
   ...(pt.extra||[]).map((e, i) => ({ x: e.x, y: e.y, k: i, label: subLabel(pt.n, i), photos: e.photos || [] }))];
+/* ---------- Object types and their requirements (BFS 2024:7, Boverkets föreskrifter om säkerhet i händelse av brand) ----------
+   Each requirement is assessed as Godkänt utfört, Ej godkänt utfört or Ej aktuellt. Assessments are stored compactly
+   as a string with one letter per requirement (o = godkänt, f = ej godkänt, n = ej aktuellt, - = ej bedömt), in the
+   order below. New requirements must therefore only be added at the end of a type's list. */
+const BFS = "BFS 2024:7";
+const OBJ_TYPES = [
+  { id: "door", name: "Dörr", groups: [
+    { name: "Kontrollpunkter", items: [
+      { short: "Brandklass", ref: "5 kap. 28–31, 44 §§", text: "Dörr uppfyller erforderlig brandklass" },
+      { short: "Bredd", ref: "7 kap. 27 §", text: "Dörr uppfyller erforderlig bredd (0,80/1,15 m)" },
+      { short: "Beslagning", ref: "7 kap. 34 §", text: "Dörr har rätt beslagning" },
+      { short: "Dörrstängare", ref: "5 kap. 43 §", text: "Dörr med dörrstängare stänger tätt" },
+      { short: "Uppställning", ref: "5 kap. 42 §", text: "Dörr som står uppställd stänger tätt" },
+    ] },
+  ] },
+];
+OBJ_TYPES.forEach(t => { t.items = t.groups.flatMap(g => g.items); t.items.forEach((it, i) => { it.i = i; }); });
+const CHECK = { o: { label: "Godkänt utfört" }, f: { label: "Ej godkänt utfört" }, n: { label: "Ej aktuellt" } };
+const typeOf = pt => (pt && OBJ_TYPES.find(t => t.id === pt.type)) || null;
+const checkAt = (pt, i) => { const c = (pt.checks || "")[i]; return CHECK[c] ? c : null; };
+function checkSummary(pt){
+  const t = typeOf(pt); if (!t) return null;
+  let o = 0, f = 0, n = 0; t.items.forEach(it => { const c = checkAt(pt, it.i); if (c === "o") o++; else if (c === "f") f++; else if (c === "n") n++; });
+  const open = t.items.length - o - f - n;
+  return { t, o, f, n, open, total: t.items.length };
+}
+const checkItems = pt => { const t = typeOf(pt); return t ? t.items.map(it => ({ text: it.text, ref: it.ref, s: checkAt(pt, it.i) })) : null; };
+function typeChip(pt){ const s = checkSummary(pt); if (!s) return null;
+  return h("span",{class:"tchip" + (s.f ? " bad" : s.open ? "" : " good")}, s.t.name + " · " + (s.f ? s.f + " ej godk." : s.open ? s.open + " ej bedömda" : "klar")); }
+const placed = pl => pl.x != null && pl.y != null; // objects on a floor without a drawing (or not yet placed) have no position
 const allPhotos = pt => [...(pt.photos||[]), ...(pt.extra||[]).flatMap(e => e.photos||[])];
 function normalize(p){
   if (!p) return p;
@@ -557,7 +643,6 @@ async function pdfPageImage(pdf, pageNo){
   await page.render({ canvasContext: ctx, viewport: vp }).promise;
   return { blob: await canvasBlob(c, "image/png"), w: c.width, h: c.height };
 }
-const fmtDate = t => new Date(t).toLocaleDateString("sv-SE", { day:"numeric", month:"short", year:"numeric" });
 
 /* ---------- Rendering ---------- */
 const app = $("#app");
@@ -566,13 +651,28 @@ function render(){
   useCats(cur());
   app.replaceChildren(S.view === "plan" ? planView() : listView());
   if (S.view === "plan") layoutStage();
+  ensureGuard();
 }
+// The phone's back button: closes an open sheet, ends move mode or goes back to the project list,
+// instead of leaving the app. One extra history entry ("guard") is kept while there is something to close.
+let guard = false;
+function ensureGuard(){ if (!guard && (sheetEl || S.view === "plan")) { try { history.pushState({ brs: 1 }, ""); guard = true; } catch(e) {} } }
+window.addEventListener("popstate", () => {
+  guard = false;
+  if (document.querySelector(".busy")) { ensureGuard(); return; }       // never interrupt saving or exporting
+  if (sheetEl) closeSheet();
+  else if (S.moving) finishMove(false);
+  else if (S.placing) { S.placing = null; render(); }
+  else if (S.view === "plan") { S.view = "list"; S.pending = null; render(); }
+  else { history.back(); return; }                                     // nothing to close: leave as usual
+  ensureGuard();
+});
 
 function listView(){
   const items = [...S.projects].sort((a,b) => (b.updated||0) - (a.updated||0));
   return h("div",{class:"view"},
     h("div",{class:"bar"}, h("h1",{},"BRS - Inventeringsapp"),
-      h("label",{class:"btn primary",for:"planInput",role:"button",tabindex:"0",style:"padding:9px 14px;font-size:15px",onclick:()=>resetPlanInput("project")},"+ Nytt projekt")),
+      h("button",{class:"btn primary",style:"padding:9px 14px;font-size:15px",onclick:()=>openSheet({type:"start",mode:"project"})},"+ Nytt projekt")),
     h("div",{class:"scroll"},
       store.mode === "local" ? h("p",{class:"note",style:"margin:0 0 12px"}, LOCAL_NOTE) : null,
       items.length ? [h("div",{class:"listhead"}, h("div",{class:"eyebrow"}, items.length + " projekt"),
@@ -580,29 +680,71 @@ function listView(){
             h("label",{class:"linkbtn",for:"backupInput",role:"button",tabindex:"0",onclick:()=>{ $("#backupInput").value = ""; }},"Läs in säkerhetskopia"),
             downloads ? h("button",{class:"linkbtn",onclick:()=>backupProjects(S.projects, "Alla projekt")},"Säkerhetskopiera alla") : null)),
         h("div",{class:"plist"}, items.map(p => { const f0 = p.floors[0]; const nf = p.floors.length; return h("button",{class:"pcard",onclick:()=>openProject(p.id)},
-          f0 ? thumb(f0.drawing, 200) : h("div",{class:"ph"}),
+          f0 && f0.drawing ? thumb(f0.drawing, 200) : (ph0 => ph0 ? thumb(ph0, 200) : h("div",{class:"ph"}))((allPts(p).find(x => x.photos.length) || { photos: [] }).photos[0]),
           h("div",{}, h("b",{},p.name), h("small",{}, [p.info && p.info.nr ? "Nr " + p.info.nr : null, p.info && p.info.date ? p.info.date : null, nf + " våningsplan"].filter(Boolean).join(" · "))),
           h("span",{class:"count"}, ptCount(p) + " pkt")
         ); }))]
       : h("div",{class:"empty"},
-          h("h2",{},"Ladda upp en ritning för att börja"),
+          h("h2",{},"Skapa ditt första projekt"),
           h("ol",{class:"steps"},
-            h("li",{},h("span",{},"1"),"Välj en planritning som PDF eller bild. Fler våningsplan lägger du till i projektet efteråt."),
+            h("li",{},h("span",{},"1"),"Välj en planritning som PDF eller bild, eller starta utan ritning och lägg objekten i en lista. Fler våningsplan lägger du till efteråt."),
             h("li",{},h("span",{},"2"),"Tryck där något ska dokumenteras, till exempel vid en dörr. Punkten får nästa nummer."),
             h("li",{},h("span",{},"3"),"Ta eller välj ett foto och skriv en kort beskrivning. Foto 1 hör till punkt 1, och så vidare.")),
-          h("label",{class:"btn primary",for:"planInput",role:"button",tabindex:"0",onclick:()=>resetPlanInput("project")},"Välj ritning"),
+          h("button",{class:"btn primary",onclick:()=>openSheet({type:"start",mode:"project"})},"Nytt projekt"),
           h("label",{class:"btn ghost",for:"backupInput",role:"button",tabindex:"0",onclick:()=>{ $("#backupInput").value = ""; }},"Läs in säkerhetskopia"))
     ));
 }
 
 let stageEl, vpEl;
+function floorTabs(p, f){
+  return h("div",{class:"floors",role:"tablist","aria-label":"Våningsplan"},
+    p.floors.map(x => h("button",{class:"floor" + (x.id===f.id?" on":""),role:"tab","aria-selected":x.id===f.id?"true":"false",onclick:()=>{ if (x.id===S.floor) return openSheet({type:"floor",fid:x.id}); S.floor = x.id; S.fitted = false; S.pending = null; render(); }},
+      x.name, h("span",{}, (x.points||[]).length), x.id===f.id ? h("em",{"aria-hidden":"true"},"⋯") : null)),
+    h("button",{class:"floor add",onclick:()=>openSheet({type:"start",mode:"floor"})},"+ Våningsplan"));
+}
+function planBar(p){
+  return h("div",{class:"bar"},
+    h("button",{class:"iconbtn","aria-label":"Tillbaka",onclick:()=>{S.view="list";S.pending=null;S.moving=null;S.placing=null;render()}},"‹"),
+    h("h1",{},p.name),
+    h("button",{class:"iconbtn",onclick:()=>openSheet({type:"project"})},"Mer"));
+}
+function planFoot(p){
+  return h("div",{class:"foot"},
+    h("button",{class:"btn ghost",onclick:()=>openSheet({type:"list"})},"Punkter (" + ptCount(p) + ")"),
+    downloads ? h("button",{class:"btn primary",onclick:()=>openSheet({type:"export"})},"Exportera") : null);
+}
+// A floor without a drawing: the objects as a list, new ones added with a button
+function objView(p, f){
+  vpEl = null; stageEl = null; S.moving = null; S.placing = null;
+  const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
+  const list = h("div",{class:"scroll olist",id:"olist"},
+    h("button",{class:"btn primary addobj",onclick:newObject},"+ Nytt objekt"),
+    pts.length ? pts.map(pt => h("button",{class:"ocard","data-n":pt.n,onclick:()=>openSheet({type:"point",n:pt.n})},
+        h("span",{class:"n",style:"color:" + catColor(pt)}, pt.n),
+        h("div",{}, h("div",{class:"otop"}, catOf(pt) ? h("span",{class:"cchip",style:"--cc:" + catColor(pt)}, catName(pt)) : null, typeChip(pt), pt.prio ? h("span",{class:"oprio"}, "Prio " + pt.prio) : null),
+          h("p",{class: pt.desc ? "" : "none"}, pt.desc || "Ingen beskrivning")),
+        pt.photos.length ? thumb(pt.photos[0], 160) : h("div",{class:"ph"})))
+    : h("p",{class:"sideempty",style:"padding:6px 0"}, "Inga objekt på " + f.name + " än. Tryck på + Nytt objekt för att lägga till det första. Vill du placera objekten på en ritning kan du lägga till en via ⋯ på planfliken."));
+  const keep = S.lscroll && S.lscroll.fid === f.id ? S.lscroll.top : 0;
+  requestAnimationFrame(() => { list.scrollTop = keep; });
+  list.addEventListener("scroll", () => { S.lscroll = { fid: f.id, top: list.scrollTop }; }, { passive:true });
+  return h("div",{class:"view"}, planBar(p), floorTabs(p, f), list, planFoot(p));
+}
+function newObject(){
+  const n = ptCount(cur()) + 1; S.pending = { n, x: null, y: null };
+  if (camFirst()) return cameraThen(files => openSheet({ type:"point", isNew:true, n, files }));
+  openSheet({ type:"point", isNew:true, n });
+}
 function planView(){
   const p = cur(); const f = fl(); S.floor = f.id;
+  if (!f.drawing) return objView(p, f);
   const pts = f.points || []; const next = ptCount(p) + 1;
+  const unplaced = pts.filter(pt => !placed(pt)).length;
   vpEl = h("div",{class:"vp",id:"vp"});
   stageEl = h("div",{class:"stage"}, drawingEl(f, p)); lastInv = 0;
   if (S.moving && S.moving.fid !== f.id) S.moving = null;
   for (const pt of pts) for (const pl of places(pt)) { const mv = S.moving && S.moving.n === pt.n && S.moving.k === pl.k;
+    if (!mv && !placed(pl)) continue;
     const m = marker(pt.n, mv ? S.moving.x : pl.x, mv ? S.moving.y : pl.y, (pl.photos.length ? "" : "nophoto") + (pl.k >= 0 ? " extra" : "") + (mv ? " moving" : ""), catColor(pt), pl.label);
     m.dataset.k = pl.k; stageEl.append(m); }
   if (S.placing && S.placing.fid !== f.id) S.placing = null;
@@ -616,27 +758,14 @@ function planView(){
     : S.placing
     ? h("div",{class:"movebar"}, h("span",{}, h("b",{}, "Underpunkter till punkt " + S.placing.n), "Tryck på ritningen för att lägga till " + nextSub(S.placing.n) + "."),
         h("button",{class:"sbtn ok",onclick:()=>{ S.placing = null; render(); }},"Klar"))
-    : h("div",{class:"hint"}, next > 1 ? "Tryck för punkt " + next + " · dubbeltryck på en punkt för att flytta den" : "Tryck på ritningen för att sätta punkt 1"),
+    : h("div",{class:"hint"}, unplaced ? (unplaced === 1 ? "1 objekt" : unplaced + " objekt") + " saknar plats · öppna och välj Placera" : next > 1 ? "Tryck för punkt " + next + " · dubbeltryck flyttar en punkt" : "Tryck på ritningen för att sätta punkt 1"),
     h("div",{class:"zoom"}, h("button",{"aria-label":"Zooma in",onclick:e=>{e.stopPropagation();zoomBy(1.4)}},"+"),
       h("button",{"aria-label":"Zooma ut",onclick:e=>{e.stopPropagation();zoomBy(1/1.4)}},"−"),
       h("button",{"aria-label":"Anpassa",style:"font-size:13px",onclick:e=>{e.stopPropagation();S.fitted=false;layoutStage()}},"⤢")));
   if (S.panel) { vpEl.classList.add("with-side"); vpEl.append(sidePanel(f)); if (S.sel != null && !pts.some(x => x.n === S.sel)) S.sel = null; }
   else vpEl.append(h("button",{class:"sidetoggle",onclick:()=>toggleSide(true)},"☰ Objekt (" + pts.length + ")"));
   bindGestures(vpEl);
-  const tabs = h("div",{class:"floors",role:"tablist","aria-label":"Våningsplan"},
-    p.floors.map(x => h("button",{class:"floor" + (x.id===f.id?" on":""),role:"tab","aria-selected":x.id===f.id?"true":"false",onclick:()=>{ if (x.id===S.floor) return openSheet({type:"floor",fid:x.id}); S.floor = x.id; S.fitted = false; S.pending = null; render(); }},
-      x.name, h("span",{}, (x.points||[]).length), x.id===f.id ? h("em",{"aria-hidden":"true"},"⋯") : null)),
-    h("label",{class:"floor add",for:"planInput",role:"button",tabindex:"0",onclick:()=>resetPlanInput("floor")},"+ Våningsplan"));
-  return h("div",{class:"view"},
-    h("div",{class:"bar"},
-      h("button",{class:"iconbtn","aria-label":"Tillbaka",onclick:()=>{S.view="list";S.pending=null;S.moving=null;S.placing=null;render()}},"‹"),
-      h("h1",{},p.name),
-      h("button",{class:"iconbtn",onclick:()=>openSheet({type:"project"})},"Mer")),
-    tabs,
-    vpEl,
-    h("div",{class:"foot"},
-      h("button",{class:"btn ghost",onclick:()=>openSheet({type:"list"})},"Punkter (" + ptCount(p) + ")"),
-      downloads ? h("button",{class:"btn primary",onclick:()=>openSheet({type:"export"})},"Exportera") : null));
+  return h("div",{class:"view"}, planBar(p), floorTabs(p, f), vpEl, planFoot(p));
 }
 const DRAWING_ELS = new Map(); // one <img> per drawing, reused so it is not decoded again on every redraw
 function drawingEl(f, p){
@@ -647,7 +776,7 @@ function drawingEl(f, p){
 function marker(n, x, y, cls, color, label){ const m = h("div",{class:"mk " + (cls||"") + (String(label || n).length > 2 ? " long" : ""), "data-n": n, style:`left:${x*100}%;top:${y*100}%` + (color ? `;--mc:${color}` : "")}, h("i",{},label || String(n))); return m; }
 
 function layoutStage(){
-  const f = fl(); if (!f || !vpEl) return;
+  const f = fl(); if (!f || !vpEl || !f.drawing) return;
   const W = vpEl.clientWidth, H = vpEl.clientHeight;
   stageEl.style.width = f.drawing.w + "px"; stageEl.style.height = f.drawing.h + "px";
   if (!S.fitted && W) {
@@ -750,11 +879,15 @@ function startMove(n, k = -1){
   const f = fl(); const pt = (f.points||[]).find(x => x.n === n); if (!pt) return;
   dropSheet(); S.pending = null; S.placing = null;
   const pl = places(pt).find(q => q.k === k) || places(pt)[0];
-  S.moving = { n, k: pl.k, fid: f.id, x: pl.x, y: pl.y, ox: pl.x, oy: pl.y };
+  let x = pl.x, y = pl.y;
+  if (!placed(pl)) { // not placed yet: start in the middle of what is shown
+    const W = vpEl ? vpEl.clientWidth - sideW() : 0, H = vpEl ? vpEl.clientHeight : 0;
+    x = W ? Math.min(1, Math.max(0, (W/2 - S.tx)/S.scale/f.drawing.w)) : 0.5; y = H ? Math.min(1, Math.max(0, (H/2 - S.ty)/S.scale/f.drawing.h)) : 0.5; }
+  S.moving = { n, k: pl.k, fid: f.id, x, y, ox: pl.x, oy: pl.y };
   if (S.panel) S.sel = n;
   render();
-  if (S.panel) selectPoint(n, { scroll:true, pan:true });
-  else { panToPoint({ ...pt, x: pl.x, y: pl.y }, false); }
+  if (S.panel) selectPoint(n, { scroll:true, pan:placed(pl) });
+  else if (placed(pl)) panToPoint({ ...pt, x: pl.x, y: pl.y }, false);
 }
 function nextSub(n){ const pt = (fl().points||[]).find(x => x.n === n); return subLabel(n, pt ? pt.extra.length : 0); }
 function startPlacing(n){ dropSheet(); S.pending = null; S.moving = null; S.placing = { n, fid: fl().id }; render(); }
@@ -794,11 +927,13 @@ function photoPicker(initial, preFiles){
     h("label",{}, h("input",{type:"file",accept:"image/*",multiple:true,onchange:onFile}), "Välj bilder"));
   return { grid, buttons, count: () => keep.length + added.length, camFiles: () => added.filter(a => a.cam).map(a => a.file),
     async commit(done){ // returns the final list, the removed ones and the photos still to upload
-      const photos = [...keep], fresh = [];
+      const photos = [...keep], fresh = []; let bad = 0;
       for (let i = 0; i < added.length; i++) {
         if (store.mode === "cloud") { const t = { blob: added[i].file, tmp: uid() }; photos.push(t); fresh.push(t); continue; } // uploaded in the background
         if (added.length > 1) done.set("Sparar foto " + (i+1) + " av " + added.length + "…");
-        const small = await shrink(added[i].file); photos.push(await store.putImage(small.blob)); }
+        let small = null; try { small = await shrink(added[i].file); } catch(e) { bad++; continue; } // e.g. a file that is not a picture
+        photos.push(await store.putImage(small.blob)); }
+      if (bad) setTimeout(() => toast(bad === 1 ? "Ett foto kunde inte läsas och sparades inte" : bad + " foton kunde inte läsas och sparades inte"), 400);
       return { photos, removed: initial.filter(ph => !keep.includes(ph)), fresh };
     } };
 }
@@ -844,15 +979,15 @@ async function finishMove(save){
     const np = withFloor(cur(), mv.fid, ff => ({ points: (ff.points||[]).map(pt => pt.n !== mv.n ? pt
       : mv.k < 0 ? { ...pt, x: mv.x, y: mv.y } : { ...pt, extra: pt.extra.map((e, i) => i === mv.k ? { x: mv.x, y: mv.y } : e) }) }));
     replaceLocal(np); render();
-    try { await store.save(np); toast("Punkt " + mv.n + " flyttad"); } catch(e){ toast("Kunde inte spara den nya platsen"); }
+    try { await store.save(np); toast("Punkt " + mv.n + (mv.ox == null ? " placerad" : " flyttad")); } catch(e){ toast("Kunde inte spara den nya platsen"); }
   } else { render(); if (save) toast("Punkt " + mv.n + " ligger kvar"); }
 }
 
 function tap(x, y){
   const p = cur(); const f = fl(); const W = f.drawing.w, H = f.drawing.h;
   // existing marker? (marker tip is at the point; the tag sits above it)
-  let hit = null, hitK = -1, best = 30;
-  for (const pt of f.points||[]) for (const pl of places(pt)) {
+  let hit = null, hitK = -1, best = 22; // about the size of a marker
+  for (const pt of f.points||[]) for (const pl of places(pt)) { if (!placed(pl)) continue;
     const sx = S.tx + pl.x*W*S.scale, sy = S.ty + pl.y*H*S.scale;
     const d = Math.hypot(sx - x, sy - y); if (d < best) { best = d; hit = pt; hitK = pl.k; }
   }
@@ -891,14 +1026,17 @@ function sidePanel(f){
   if (!pts.length) { list.append(h("p",{class:"sideempty"},"Inga objekt på det här planet än. Tryck på ritningen för att lägga till.")); return list; }
   list.append(h("div",{class:"spacer"}));
   for (const pt of pts) {
-    const item = h("div",{class:"sitem","data-n":pt.n,onclick:e=>{ if (e.target.closest("button")) return; selectPoint(pt.n, { scroll:true, pan:true }); }},
+    const item = h("div",{class:"sitem","data-n":pt.n,
+      onpointerdown:e=>{ if (e.target.closest("button")) { list._lock = Math.max(list._lock || 0, Date.now() + 1200); if (S.sel !== pt.n) { S.sel = pt.n; markSel(); } } }, // a tap on a button keeps this item selected
+      onclick:e=>{ if (e.target.closest("button")) return; selectPoint(pt.n, { scroll:true, pan:true }); }},
       h("div",{class:"stop"}, h("b",{style:"color:" + catColor(pt)}, pt.n), catOf(pt) ? h("span",{class:"cchip",style:"--cc:" + catColor(pt)}, catName(pt)) : null, pt.extra.length ? h("span",{class:"plc"}, "+" + pt.extra.length + " underpunkt" + (pt.extra.length === 1 ? "" : "er")) : null, pt.photos.length ? thumb(pt.photos[0], 120) : null),
+      typeOf(pt) ? h("div",{}, typeChip(pt)) : null,
       h("p",{class: pt.desc ? "" : "none"}, pt.desc || "Ingen beskrivning"),
       h("div",{class:"sactions"},
         h("button",{class:"sbtn",onclick:()=>openSheet({type:"point",n:pt.n})},"Redigera"),
-        h("button",{class:"sbtn",onclick:()=>startMove(pt.n)},"Flytta"),
+        h("button",{class:"sbtn",onclick:()=>startMove(pt.n)}, placed(pt) ? "Flytta" : "Placera"),
         h("button",{class:"sbtn danger",onclick:e=>{
-          const box = e.target.closest(".sactions");
+          const box = e.target.closest(".sactions"); list._lock = Infinity; S.sel = pt.n; markSel(); // keep the question on screen until answered
           box.replaceChildren(h("span",{class:"sask"},"Ta bort punkt " + pt.n + "?"),
             h("button",{class:"sbtn",onclick:()=>renderSideOnly()},"Behåll"),
             h("button",{class:"sbtn danger solid",onclick:async()=>{ S.sel = null; await deletePoint(f.id, pt.n); }},"Ta bort"));
@@ -908,7 +1046,7 @@ function sidePanel(f){
   list.append(h("div",{class:"spacer"}));
   let raf = 0;
   list.addEventListener("scroll", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
-    if (list._programmatic) return;
+    if (list._programmatic || (list._lock || 0) > Date.now()) return;
     const mid = list.scrollTop + list.clientHeight/2; let best = null, bd = 1e9;
     list.querySelectorAll(".sitem").forEach(el => { const c = el.offsetTop + el.offsetHeight/2; const d = Math.abs(c - mid); if (d < bd) { bd = d; best = el; } });
     if (best && +best.dataset.n !== S.sel) selectPoint(+best.dataset.n, { scroll:false, pan:true });
@@ -941,7 +1079,8 @@ function selectPoint(n, o={}){
   if (o.pan) panToPoint(pt, o.instant);
 }
 function panToPoint(pt, instant){
-  const f = fl(); const W = vpEl.clientWidth - sideW(), H = vpEl.clientHeight;
+  const f = fl(); if (!vpEl || !f.drawing || !placed(pt)) return;
+  const W = vpEl.clientWidth - sideW(), H = vpEl.clientHeight;
   const sx = S.tx + pt.x*f.drawing.w*S.scale, sy = S.ty + pt.y*f.drawing.h*S.scale;
   const m = 50;
   if (sx > m && sx < W - m && sy > m + 30 && sy < H - m) return; // already in view
@@ -955,9 +1094,10 @@ let sheetEl = null;
 function closeSheet(){ if (sheetEl) sheetEl.remove(); sheetEl = null; if (S.pending || S.pendingSub) { S.pending = null; S.pendingSub = null; render(); } }
 function openSheet(cfg){
   if (sheetEl) sheetEl.remove();
-  const body = cfg.type === "point" ? pointSheet(cfg) : cfg.type === "list" ? listSheet() : cfg.type === "newplan" ? newPlanSheet(cfg) : cfg.type === "export" ? exportSheet() : cfg.type === "floor" ? floorSheet(cfg.fid) : cfg.type === "cats" ? catsSheet() : cfg.type === "sub" ? subSheet(cfg) : cfg.type === "ready" ? readySheet(cfg) : projectSheet();
+  const body = cfg.type === "point" ? pointSheet(cfg) : cfg.type === "list" ? listSheet() : cfg.type === "newplan" ? newPlanSheet(cfg) : cfg.type === "export" ? exportSheet() : cfg.type === "floor" ? floorSheet(cfg.fid) : cfg.type === "cats" ? catsSheet() : cfg.type === "sub" ? subSheet(cfg) : cfg.type === "ready" ? readySheet(cfg) : cfg.type === "start" ? startSheet(cfg) : projectSheet();
   sheetEl = h("div",{class:"scrim",onclick:e=>{ if(e.target===sheetEl) closeSheet(); }}, h("div",{class:"sheet",role:"dialog","aria-modal":"true"}, h("div",{class:"grab"}), body));
   document.body.append(sheetEl);
+  ensureGuard();
 }
 const dropSheet = () => { if (sheetEl) sheetEl.remove(); sheetEl = null; };
 
@@ -980,7 +1120,7 @@ function catForm(c, onSave, onCancel){
   return box;
 }
 async function saveCats(cats){
-  const np = { ...cur(), cats, updated: Date.now() }; replaceLocal(np); useCats(np);
+  const np = { ...cur(), cats: cats.filter(c => !c.fixed), updated: Date.now() }; replaceLocal(np); useCats(np);
   try { await store.save(np); } catch(e){ toast("Kunde inte spara kategorierna"); }
 }
 function catsSheet(){
@@ -991,12 +1131,13 @@ function catsSheet(){
     const count = id => allPts(cur()).filter(pt => pt.cat === id).length;
     list.replaceChildren(...(CATS.length ? CATS.map(c => {
       const row = h("div",{class:"catitem"});
+      if (c.fixed) { row.append(h("span",{class:"cat on",style:"--cc:" + c.color}, c.name), h("small",{}, pk(count(c.id))), h("span",{class:"muted"},"Alltid med · hamnar sist i exporten")); return row; }
       const show = () => row.replaceChildren(h("span",{class:"cat on",style:"--cc:" + c.color}, c.name), h("small",{}, pk(count(c.id))),
         h("button",{class:"sbtn",onclick:()=>row.replaceChildren(catForm(c, async nc => { await saveCats(CATS.map(k => k.id === c.id ? nc : k)); draw(); }, show))},"Ändra"),
         h("button",{class:"sbtn danger",onclick:()=>row.replaceChildren(h("span",{class:"sask"}, "Ta bort " + c.name + "? " + (count(c.id) ? pk(count(c.id)) + " blir utan kategori." : "")),
           h("button",{class:"sbtn",onclick:show},"Behåll"),
           h("button",{class:"sbtn danger solid",onclick:async()=>{
-            let np = { ...cur(), cats: CATS.filter(k => k.id !== c.id), updated: Date.now() };
+            let np = { ...cur(), cats: CATS.filter(k => k.id !== c.id && !k.fixed), updated: Date.now() };
             np = { ...np, floors: np.floors.map(f => ({ ...f, points: f.points.map(pt => pt.cat === c.id ? { ...pt, cat: null } : pt) })) };
             replaceLocal(np); useCats(np); try { await store.save(np); } catch(e){ toast("Kunde inte spara"); } draw(); render(); }},"Ta bort"))},"Ta bort"));
       show(); return row; }) : [h("p",{class:"muted",style:"margin:0"},"Inga kategorier än.")]));
@@ -1006,7 +1147,7 @@ function catsSheet(){
   const addBtn = h("button",{class:"btn ghost",onclick:()=>addWrap.replaceChildren(catForm(null, async nc => { await saveCats([...CATS, nc]); draw(); addWrap.replaceChildren(addBtn); render(); }, () => addWrap.replaceChildren(addBtn)))},"+ Ny kategori");
   addWrap.append(addBtn);
   return h("div",{style:"display:grid;gap:14px"},
-    h("div",{class:"shead"}, h("h2",{},"Kategorier"), h("span",{class:"count"}, p.name)),
+    h("div",{class:"shead"}, h("h2",{},"Kategorier"), h("span",{class:"count"}, ((n) => n === 1 ? "1 egen" : n + " egna")((p.cats||[]).length))),
     h("p",{class:"muted",style:"margin:0;line-height:1.4"},"Kategorierna gäller det här projektet. Nya projekt får samma kategorier som det senast använda."),
     list, addWrap,
     h("button",{class:"btn ghost",onclick:()=>{ dropSheet(); render(); }},"Klar"));
@@ -1066,6 +1207,17 @@ function pointSheet(cfg){
     ...CATS.map(c => h("button",{class:"cat" + (cat===c.id?" on":""),style:"--cc:" + c.color,"aria-pressed":cat===c.id?"true":"false",onclick:()=>{ cat = cat===c.id ? null : c.id; drawChips(); tint(); }}, c.name)),
     h("button",{class:"cat add",onclick:()=>chips.replaceChildren(catForm(null, async nc => { await saveCats([...CATS, nc]); cat = nc.id; drawChips(); tint(); }, drawChips))}, "+ Ny kategori"));
   drawChips(); tint();
+  // object type: shows the requirements that can apply to it, each assessed with three choices
+  const known = id => OBJ_TYPES.some(t => t.id === id) ? id : null; // an unknown type (damaged data) counts as none
+  let type = existing ? known(existing.type) : known(S.lastType);
+  const marks = (existing && existing.checks || "").split("");
+  const typeBox = h("div",{class:"cats types"}), checkWrap = h("div",{});
+  const drawType = () => {
+    typeBox.replaceChildren(h("button",{class:"cat" + (!type ? " on" : ""),"aria-pressed":!type?"true":"false",onclick:()=>{ type = null; drawType(); }},"Ingen"),
+      ...OBJ_TYPES.map(t => h("button",{class:"cat" + (type === t.id ? " on" : ""),"aria-pressed":type===t.id?"true":"false",onclick:()=>{ type = t.id; drawType(); }}, t.name)));
+    checkWrap.replaceChildren(...(type ? [checklist(OBJ_TYPES.find(t => t.id === type), marks)] : []));
+  };
+  drawType();
   const desc = h("textarea",{id:"desc",placeholder:"Kort beskrivning, t.ex. Dörr D12, saknar dörrstängare",maxlength:"300"});
   desc.value = existing ? existing.desc || "" : "";
   const sugg = descSuggest(desc, p, existing ? existing.desc : null);
@@ -1077,10 +1229,14 @@ function pointSheet(cfg){
       const basePt = existing || S.pending; const ptId = (existing && existing.id) || uid();
       const np = withFloor(cur(), f.id, ff => {
         const pts = (ff.points||[]).filter(x => x.n !== cfg.n);
-        pts.push({ id: ptId, n: cfg.n, x: basePt.x, y: basePt.y, extra: existing ? existing.extra : [], photos, cat: cat || null, prio: prio || null, desc: desc.value.trim(), t: Date.now() });
+        const tp = OBJ_TYPES.find(t => t.id === type);
+        const checks = tp ? tp.items.map(it => CHECK[marks[it.i]] ? marks[it.i] : "-").join("").replace(/-+$/, "") : "";
+        pts.push({ id: ptId, n: cfg.n, x: basePt.x, y: basePt.y, extra: existing ? existing.extra : [], photos, cat: cat || null, prio: prio || null, desc: desc.value.trim(), t: Date.now(),
+          ...(tp ? { type: tp.id, checks } : {}) });
         return { points: pts.sort((a,b)=>a.n-b.n) };
       });
-      replaceLocal(np); S.pending = null; S.lastCat = cat; S.lastPrio = prio; if (S.panel) S.sel = cfg.n;
+      if (cfg.isNew && !f.drawing) S.lscroll = { fid: f.id, top: 1e9 }; // show the new object at the end of the list
+      replaceLocal(np); S.pending = null; if (cat !== NOTE_CAT.id) S.lastCat = cat; S.lastPrio = prio; S.lastType = type; // a note is never carried over to the next point if (S.panel) S.sel = cfg.n;
       dropSheet(); render();
       fresh.forEach(t => queuePhoto(t, np.id, ptId, null));
       await store.save(np);
@@ -1105,15 +1261,48 @@ function pointSheet(cfg){
     pick.grid, pick.buttons,
     h("div",{class:"field"}, h("label",{},"Prioritering"), prioBox),
     h("div",{class:"field"}, h("label",{},"Kategori"), chips, !CATS.length ? h("small",{class:"muted"},"Skapa egna kategorier med namn och färg, t.ex. Dörr eller Skyltning.") : null),
+    h("div",{class:"field"}, h("label",{},"Objektstyp"), typeBox),
     h("div",{class:"field"}, h("label",{for:"desc"},"Beskrivning"), desc, sugg),
-    h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"), saveBtn),
-    !cfg.isNew ? h("div",{class:"row"},
-      h("button",{class:"btn ghost",onclick:()=>startMove(cfg.n)},"Flytta punkten"),
+    checkWrap,
+    h("div",{class:"row savebar"}, h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"), saveBtn),
+    !cfg.isNew && f.drawing ? h("div",{class:"row"},
+      h("button",{class:"btn ghost",onclick:()=>startMove(cfg.n)}, placed(existing) ? "Flytta punkten" : "Placera på ritningen"),
       h("button",{class:"btn ghost",onclick:()=>startPlacing(cfg.n)},"+ Underpunkt")) : null,
     !cfg.isNew && existing.extra.length ? h("div",{class:"subs"}, h("small",{class:"muted"},"Underpunkter:"),
       existing.extra.map((e, i) => h("button",{class:"subchip",style:"--cc:" + catColor(existing),onclick:()=>openSheet({type:"sub", n: cfg.n, k: i})},
         subLabel(cfg.n, i), e.photos.length ? h("small",{}, "· " + e.photos.length + " foto") : null))) : null,
     delWrap);
+}
+
+// The requirements of an object type, each with Godkänt utfört / Ej godkänt utfört / Ej aktuellt (marks is changed in place)
+function checklist(t, marks){
+  const box = h("div",{class:"checks"});
+  const sum = h("span",{}); const fillBtn = h("button",{type:"button",class:"linkbtn",style:"justify-self:start"});
+  const update = () => {
+    const c = t.items.map(it => CHECK[marks[it.i]] ? marks[it.i] : null);
+    const done = c.filter(Boolean).length, fail = c.filter(x => x === "f").length, open = t.items.length - done;
+    sum.textContent = done + " av " + t.items.length + " krav bedömda" + (fail ? " · " + fail + " ej godkända" : "");
+    sum.className = fail ? "bad" : "";
+    fillBtn.textContent = "Markera övriga " + open + " som Ej aktuellt"; fillBtn.hidden = !open || !done;
+  };
+  const items = new Map();
+  const itemEl = it => {
+    const el = h("div",{class:"creq","data-req":it.i});
+    const btns = h("div",{class:"cbtns",role:"radiogroup","aria-label":it.short});
+    const draw = () => { const cur = CHECK[marks[it.i]] ? marks[it.i] : null;
+      el.className = "creq" + (cur ? " " + { o: "ok", f: "fail", n: "na" }[cur] : "");
+      btns.replaceChildren(...["o","f","n"].map(k => h("button",{type:"button",class:"cbtn " + { o: "ok", f: "fail", n: "na" }[k] + (cur === k ? " on" : ""),role:"radio","aria-checked":cur===k?"true":"false",
+        onclick:()=>{ marks[it.i] = cur === k ? "-" : k; draw(); update(); }}, CHECK[k].label))); };
+    el.append(h("p",{}, it.text), h("small",{}, BFS + " " + it.ref),
+      ...(it.note ? [h("details",{}, h("summary",{},"Undantag och förtydliganden"), h("p",{}, it.note))] : []), btns);
+    draw(); items.set(it.i, draw); return el;
+  };
+  fillBtn.onclick = () => { t.items.forEach(it => { if (!CHECK[marks[it.i]]) { marks[it.i] = "n"; items.get(it.i)(); } }); update(); };
+  box.append(h("div",{class:"chead"}, h("b",{}, "Krav enligt " + BFS + ": " + t.name), sum),
+    h("p",{class:"muted",style:"margin:0;line-height:1.4"}, "Markera Ej aktuellt för det som inte gäller den här dörren."),
+    ...t.groups.map(g => h("div",{class:"cgroup"}, h("div",{class:"eyebrow"}, g.name), g.items.map(itemEl))),
+    fillBtn);
+  update(); return box;
 }
 
 function listSheet(){
@@ -1132,13 +1321,13 @@ function listSheet(){
         focusPoint(pt); openSheet({type:"point",n:pt.n}); }},
       h("span",{class:"n"}, pt.n),
       pt.photos.length ? thumb(pt.photos[0], 140) : h("div",{class:"ph"}),
-      h("p",{class: pt.desc ? "" : "none"}, (multi || catOf(pt)) ? h("small",{class:"fl"}, [pt.floorName && multi ? pt.floorName : null, catName(pt) || null].filter(Boolean).join(" · ")) : null, pt.desc || "Ingen beskrivning")), del);
+      h("p",{class: pt.desc ? "" : "none"}, (multi || catOf(pt)) ? h("small",{class:"fl"}, [pt.floorName && multi ? pt.floorName : null, catName(pt) || null].filter(Boolean).join(" · ")) : null, typeOf(pt) ? h("span",{style:"display:block;margin:2px 0"}, typeChip(pt)) : null, pt.desc || "Ingen beskrivning")), del);
     return wrap;
   };
   return h("div",{style:"display:grid;gap:10px"},
-    h("div",{class:"shead"}, h("h2",{},"Punkter"), h("span",{class:"count"}, pts.length + " st")),
+    h("div",{class:"shead"}, h("h2",{},"Punkter"), h("span",{class:"count"}, pk(pts.length))),
     pts.length ? h("div",{class:"plist2"}, pts.map(row))
-    : h("p",{style:"color:var(--muted);margin:0"},"Inga punkter än. Tryck på ritningen för att lägga till punkt 1."),
+    : h("p",{style:"color:var(--muted);margin:0"}, fl() && fl().drawing ? "Inga punkter än. Tryck på ritningen för att lägga till punkt 1." : "Inga punkter än. Tryck på + Nytt objekt för att lägga till punkt 1."),
     pts.length ? h("p",{style:"margin:0;color:var(--muted);font-size:13px"},"Tryck ✕ för att ta bort en punkt. Punkterna efter får nya nummer.") : null,
     h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"));
 }
@@ -1150,7 +1339,7 @@ async function deletePoint(fid, n){
   dropSheet(); render();
 }
 function focusPoint(pt){
-  const f = fl(); if (!vpEl) return;
+  const f = fl(); if (!vpEl || !f.drawing || !placed(pt)) return;
   const W = vpEl.clientWidth, H = vpEl.clientHeight;
   S.tx = W/2 - pt.x*f.drawing.w*S.scale; S.ty = H/2.6 - pt.y*f.drawing.h*S.scale; applyT();
 }
@@ -1178,7 +1367,7 @@ function floorSheet(fid){
       const done = busy("Tar bort…");
       try {
         if (only) { await store.remove(p); S.projects = S.projects.filter(x=>x.id!==p.id); S.view = "list"; dropSheet(); render(); toast("Projektet är borttaget"); return; }
-        [f.drawing, f.drawing.pdf, ...(f.points||[]).flatMap(allPhotos)].filter(Boolean).forEach(i => store.dropImage(i));
+        [f.drawing, f.drawing && f.drawing.pdf, ...(f.points||[]).flatMap(allPhotos)].filter(Boolean).forEach(i => store.dropImage(i));
         const np = renumber({ ...p, floors: p.floors.filter(x => x.id !== f.id), updated: Date.now() });
         S.floor = np.floors[Math.max(0, idx-1)].id; S.fitted = false;
         await saveProject(np, f.name + " är borttaget");
@@ -1186,8 +1375,8 @@ function floorSheet(fid){
     })}, "Ta bort våningsplanet");
   wrap.append(del);
   return h("div",{style:"display:grid;gap:14px"},
-    h("div",{class:"shead"}, h("h2",{}, f.name), h("span",{class:"count"}, n + " pkt")),
-    h("label",{class:"btn ghost",for:"planInput",role:"button",tabindex:"0",onclick:()=>{ S.floor = f.id; resetPlanInput("replace"); }},"Byt ritning för " + f.name),
+    h("div",{class:"shead"}, h("h2",{}, f.name), h("span",{class:"count"}, pk(n))),
+    h("label",{class:"btn ghost",for:"planInput",role:"button",tabindex:"0",onclick:()=>{ S.floor = f.id; resetPlanInput("replace"); }},(f.drawing ? "Byt ritning för " : "Lägg till ritning för ") + f.name),
     h("div",{class:"field"}, h("label",{for:"fname"},"Namn"), fname),
     h("div",{class:"row"}, h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"),
       h("button",{class:"btn primary",onclick:()=>saveProject(withFloor(p, f.id, () => ({ name: fname.value.trim() || f.name })), "Namnet är sparat")},"Spara namn")),
@@ -1218,10 +1407,10 @@ function projectSheet(){
       h("button",{class:"btn primary",onclick:()=>saveProject({ ...p, name: name.value.trim() || p.name, info: infoE.read(), updated: Date.now() }, "Uppgifterna är sparade")},"Spara uppgifter")),
     h("div",{class:"field"}, h("label",{},"Våningsplan"),
       h("div",{class:"flist"}, p.floors.map(f => h("button",{class:"frow",onclick:()=>openSheet({type:"floor",fid:f.id})},
-        h("b",{}, f.name), h("span",{}, (f.points||[]).length + " pkt"), h("i",{}, "Ändra eller ta bort ›"))))),
+        h("b",{}, f.name), h("span",{}, pk((f.points||[]).length)), h("i",{}, "Ändra eller ta bort ›"))))),
     h("button",{class:"btn ghost",onclick:()=>openSheet({type:"cats"})},"Kategorier (" + (p.cats||[]).length + ")"),
     h("div",{class:"field"}, h("label",{},"Export"),
-      ...[["cat","Ta med kategorier (färger på numren och färgförklaring)"], ["prio","Ta med prioritering (kolumn i tabellen)"]].map(([key, label]) =>
+      ...[["cat","Ta med kategorier (färger på numren och färgförklaring)"], ["prio","Ta med prioritering (kolumn i tabellen)"], ["chk","Ta med objekttyper och kontrollpunkter (" + BFS + ")"]].map(([key, label]) =>
         h("label",{class:"check"}, h("input",{type:"checkbox",id:"exp-" + key,checked:expOpt(p)[key],onchange:async e=>{
           const np = { ...cur(), exp: { ...(cur().exp || {}), [key]: e.target.checked }, updated: Date.now() }; replaceLocal(np);
           try { await store.save(np); toast("Exportinställningen är sparad"); } catch(err){ toast("Kunde inte spara"); } }}), label))),
@@ -1234,6 +1423,17 @@ function projectSheet(){
 }
 
 /* ---------- New project / new floor ---------- */
+// First choice: with a drawing (PDF or picture) or without one (the objects as a list)
+function startSheet(cfg){
+  const isProject = cfg.mode === "project";
+  return h("div",{style:"display:grid;gap:12px"},
+    h("div",{class:"shead"}, h("h2",{}, isProject ? "Nytt projekt" : "Nytt våningsplan")),
+    h("label",{class:"choice",for:"planInput",role:"button",tabindex:"0",id:"withdrawing",onclick:()=>resetPlanInput(cfg.mode)},
+      h("b",{},"Med ritning"), h("span",{},"Välj en PDF eller bild och placera objekten på ritningen.")),
+    h("button",{class:"choice",id:"nodrawing",onclick:()=>openSheet({ type:"newplan", file:null, pdf:null, mode:cfg.mode })},
+      h("b",{},"Utan ritning"), h("span",{},"Lägg till objekten i en lista, utan att placera dem. En ritning kan läggas till senare.")),
+    h("button",{class:"btn ghost",onclick:closeSheet},"Avbryt"));
+}
 let planMode = "project";
 function resetPlanInput(mode){ planMode = mode; $("#planInput").value = ""; }
 $("#planInput").addEventListener("change", async e => {
@@ -1248,7 +1448,8 @@ function newPlanSheet(cfg){
   const file = cfg.file, pdf = cfg.pdf, pages = pdf ? pdf.numPages : 1, isProject = cfg.mode === "project";
   const p = isProject ? null : cur();
   const startNo = isProject ? 1 : p.floors.length + 1;
-  const name = h("input",{type:"text",id:"newname"}); name.value = isProject ? file.name.replace(/\.[^.]+$/, "") : "Plan " + startNo;
+  const name = h("input",{type:"text",id:"newname"}); name.value = isProject ? (file ? file.name.replace(/\.[^.]+$/, "") : "") : "Plan " + startNo;
+  if (isProject && !file) name.placeholder = "t.ex. Kv. Eken 4";
   const fname = h("input",{type:"text",id:"newfloor"}); fname.value = "Plan 1";
   const page = h("input",{type:"text",id:"pageno",inputmode:"numeric"}); page.value = "1";
   let allPages = false;
@@ -1258,12 +1459,13 @@ function newPlanSheet(cfg){
     "Lägg till alla " + pages + " sidor som egna våningsplan");
   if (cfg.mode === "replace") return replacePlanSheet(cfg);
   const go = h("button",{class:"btn primary",onclick:async()=>{
-    go.disabled = true; const done = busy(pdf ? "Läser in PDF…" : "Laddar upp ritning…");
+    go.disabled = true; const done = busy(!file ? "Skapar…" : pdf ? "Läser in PDF…" : "Laddar upp ritning…");
     try {
-      const list = pdf ? (allPages ? Array.from({length:pages},(_,i)=>i+1) : [parseInt(page.value,10)||1]) : [null];
+      const list = pdf ? (allPages ? Array.from({length:pages},(_,i)=>i+1) : [Math.min(pages, Math.max(1, parseInt(page.value,10)||1))]) : [null];
       const floors = [];
       for (let i = 0; i < list.length; i++) {
         if (list.length > 1) done.set("Läser in sida " + (i+1) + " av " + list.length + "…");
+        if (!file) { floors.push({ id: uid(), name: isProject ? (fname.value.trim() || "Plan 1") : (name.value.trim() || "Plan " + startNo), drawing: null, points: [] }); continue; }
         const img = pdf ? await pdfPageImage(pdf, list[i]) : await shrink(file, 4000);
         const stored = await store.putImage(img.blob);
         let pdfRef = null; if (pdf) { const one = await singlePagePdf(file, list[i]); pdfRef = { pdf: await store.putImage(one.blob), page: one.page }; }
@@ -1277,11 +1479,12 @@ function newPlanSheet(cfg){
       dropSheet();
       S.current = np.id; S.view = "plan"; S.floor = floors[0].id; S.fitted = false; S.pending = null; render();
       toast(floors.length > 1 ? floors.length + " våningsplan tillagda" : floors[0].name + " tillagt");
-    } catch(err){ toast("Ritningen kunde inte sparas: " + (err.code || err.message || "okänt fel")); go.disabled = false; }
+    } catch(err){ toast((file ? "Ritningen kunde inte sparas: " : "Kunde inte spara: ") + (err.code || err.message || "okänt fel")); go.disabled = false; }
     finally { done(); }
   }}, isProject ? "Skapa projekt" : "Lägg till våningsplan");
   return h("div",{style:"display:grid;gap:14px"},
     h("div",{class:"shead"}, h("h2",{}, isProject ? "Nytt projekt" : "Nytt våningsplan")),
+    !file ? h("p",{class:"note",style:"margin:0"}, "Utan ritning: objekten läggs i en lista i nummerordning. Du kan lägga till en ritning senare.") : null,
     h("div",{class:"field"}, h("label",{for:"newname"}, isProject ? "Uppdragsnamn" : "Namn på våningsplanet"), name),
     isProject ? infoF.els : null,
     isProject && !(pdf && pages > 1) ? h("div",{class:"field"}, h("label",{for:"newfloor"},"Första våningsplanet"), fname) : null,
@@ -1295,20 +1498,22 @@ function replacePlanSheet(cfg){
   const go = h("button",{class:"btn primary",onclick:async()=>{
     go.disabled = true; const done = busy(pdf ? "Läser in PDF…" : "Laddar upp ritning…");
     try {
-      const pno = parseInt(page.value,10)||1;
+      const pno = Math.min(pages, Math.max(1, parseInt(page.value,10)||1));
       const img = pdf ? await pdfPageImage(pdf, pno) : await shrink(file, 4000);
       const stored = await store.putImage(img.blob);
       let pdfRef = null; if (pdf) { const one = await singlePagePdf(file, pno); pdfRef = { pdf: await store.putImage(one.blob), page: one.page }; }
-      const old = f.drawing;
+      const old = f.drawing, had = !!old;
       const np = withFloor(cur(), f.id, () => ({ drawing: { ...stored, w: img.w, h: img.h, ...(pdfRef || {}) } }));
-      replaceLocal(np); await store.save(np); store.dropImage(old); if (old.pdf) store.dropImage(old.pdf);
-      dropSheet(); S.fitted = false; render(); toast("Ritningen för " + f.name + " är bytt");
+      replaceLocal(np); await store.save(np); if (old) { store.dropImage(old); if (old.pdf) store.dropImage(old.pdf); }
+      dropSheet(); S.fitted = false; render(); toast(had ? "Ritningen för " + f.name + " är bytt" : "Ritningen är tillagd. Öppna objekten och välj Placera för att sätta ut dem.");
     } catch(err){ toast("Ritningen kunde inte bytas: " + (err.code || err.message || "okänt fel")); go.disabled = false; }
     finally { done(); }
-  }}, "Byt ritning");
+  }}, f.drawing ? "Byt ritning" : "Lägg till ritning");
   return h("div",{style:"display:grid;gap:14px"},
-    h("div",{class:"shead"}, h("h2",{}, "Byt ritning för " + f.name)),
-    h("p",{style:"margin:0;color:var(--muted);line-height:1.4"}, (f.points||[]).length
+    h("div",{class:"shead"}, h("h2",{}, (f.drawing ? "Byt ritning för " : "Lägg till ritning för ") + f.name)),
+    h("p",{style:"margin:0;color:var(--muted);line-height:1.4"}, !f.drawing
+      ? ((f.points||[]).length ? "Objekten finns kvar men får ingen plats automatiskt. Öppna ett objekt och välj Placera på ritningen för att sätta ut det." : "Objekten placeras sedan på ritningen.")
+      : (f.points||[]).length
       ? "Punkterna ligger kvar på samma relativa plats. Använd en ritning med samma utsnitt, annars hamnar de fel."
       : "Den nya ritningen ersätter den gamla."),
     pdf && pages > 1 ? h("div",{class:"field"}, h("label",{for:"pageno"},"Sida (1–" + pages + ")"), page) : null,
@@ -1321,17 +1526,21 @@ function replaceLocal(np){ S.projects = S.projects.map(x => x.id === np.id ? np 
 // Table columns (mm): Nr | Beskrivning | Läge på ritning | Foto  — total 186 mm on A4 portrait with 12 mm margins
 // Table columns (mm). Without priority the description gets the space of the Prio column.
 let COLS = [], CI = {};
-function setCols(showPrio){
-  COLS = showPrio
-    ? [{k:"nr",t:"Nr.",w:13}, {k:"prio",t:"Prio",w:11}, {k:"desc",t:"Beskrivning",w:46}, {k:"loc",t:"Läge på ritning",w:58}, {k:"photo",t:"Foto",w:58}]
-    : [{k:"nr",t:"Nr.",w:13}, {k:"desc",t:"Beskrivning",w:57}, {k:"loc",t:"Läge på ritning",w:58}, {k:"photo",t:"Foto",w:58}];
+// Without any drawing in the project there is no location column; with categories they get their own column before the description.
+// The description takes the width that is left of the 186 mm.
+function setCols(showPrio, showLoc = true, showCat = false){
+  const tight = showCat && showLoc, picW = tight ? 50 : 58;
+  COLS = [{k:"nr",t:"Nr.",w:tight ? 10 : 13}, showPrio ? {k:"prio",t:"Prio",w:11} : null, showCat ? {k:"cat",t:"Kategori",w:23} : null, {k:"desc",t:"Beskrivning",w:0},
+    showLoc ? {k:"loc",t:"Läge på ritning",w:picW} : null, {k:"photo",t:"Foto",w:picW}].filter(Boolean);
+  COLS.find(c => c.k === "desc").w = 186 - COLS.reduce((a, c) => a + c.w, 0);
   CI = {}; COLS.forEach((c, i) => { CI[c.k] = i; });
 }
 setCols(true);
 // Export settings per project (under Mer): include categories (colours, legend) and priority (table column)
-const expOpt = p => ({ cat: !(p && p.exp && p.exp.cat === false), prio: !(p && p.exp && p.exp.prio === false) });
+const expOpt = p => ({ cat: !(p && p.exp && p.exp.cat === false), prio: !(p && p.exp && p.exp.prio === false), chk: !(p && p.exp && p.exp.chk === false) });
 const ROW_H = 47, CELL_PAD = 2; // 5 objects per A4 page
-const CROP_W_MM = COLS[CI.loc].w - 2*CELL_PAD, CROP_H_MM = ROW_H - 2*CELL_PAD;
+const CROP_H_MM = ROW_H - 2*CELL_PAD;
+const cropW = () => (CI.loc != null ? COLS[CI.loc].w : 58) - 2*CELL_PAD; // width of the location image, follows the column
 const CROP_SPAN = 0.30; // share of the drawing's longest side shown in each location image
 
 function fileBase(p){ return (p.name.replace(/[^\wåäöÅÄÖ\- ]+/g,"").trim() || "ritning"); }
@@ -1436,8 +1645,15 @@ async function renderPdfWhole(d, longSide){
 const hasPdf = d => !!(d && d.pdf && window.pdfjsLib);
 
 // Builds every image the report needs, shared by the PDF and Word writers.
+let MULTI_FLOORS = false; const p_multi = () => MULTI_FLOORS; // notes from several floors share one page: name the floor
 async function buildFloor(f){
   const d = f.drawing; let base = null, fromPdf = false;
+  if (!d) { // no drawing: only the table rows
+    const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
+    const rows = pts.map(pt => ({ n: String(pt.n), key: pt.n*1000, note: isNote(pt), prio: pt.prio || null, desc: (isNote(pt) && p_multi(f) ? f.name + ": " : "") + (pt.desc || ""), floorName: f.name,
+      cat: catName(pt), catColor: catColor(pt), chk: checkSummary(pt), chkItems: checkItems(pt), nPhotos: pt.photos.length, crop: null, locText: "", photoSrc: pt.photos.length ? pt.photos : null, photo: null, hadPhoto: pt.photos.length > 0 }));
+    return { overview: null, noteOverview: null, rows, vector: null, noteVector: null, nMain: pts.filter(pt => !isNote(pt)).length, nNotes: pts.filter(isNote).length };
+  }
   if (hasPdf(d)) { try { base = await renderPdfWhole(d, 4600); fromPdf = true; } catch(e) { base = null; } }
   if (!base) {
     const plan = await loadImg(src(d));
@@ -1446,30 +1662,35 @@ async function buildFloor(f){
     const bctx = base.getContext("2d"); bctx.fillStyle="#fff"; bctx.fillRect(0,0,base.width,base.height); bctx.drawImage(plan,0,0,base.width,base.height);
   }
   const pts = [...(f.points||[])].sort((a,b)=>a.n-b.n);
-  const tags = pts.flatMap(pt => places(pt).map(pl => ({ ...pt, n: pl.label, x: pl.x, y: pl.y })));
-  const used = CATS.filter(c => pts.some(pt => pt.cat === c.id));
+  const allTags = pts.flatMap(pt => places(pt).filter(placed).map(pl => ({ ...pt, n: pl.label, x: pl.x, y: pl.y })));
+  const tags = allTags.filter(t => !isNote(t)), noteTags = allTags.filter(isNote); // notes get their own drawing
+  const used = CATS.filter(c => c.id !== NOTE_CAT.id && pts.some(pt => pt.cat === c.id));
 
-  // raster overview with all numbers (used in Word, and in the PDF when the drawing is not a PDF)
-  const lh = used.length ? Math.round(Math.max(base.width, base.height) * 0.045) : 0;
-  const ov = document.createElement("canvas"); ov.width = base.width; ov.height = base.height + lh;
-  const octx = ov.getContext("2d"); octx.fillStyle = "#fff"; octx.fillRect(0,0,ov.width,ov.height); octx.drawImage(base,0,0);
-  drawOverviewTags(octx, base.width, base.height, tags);
-  if (used.length) {
-    let lx = lh*0.4; const ly = base.height + lh/2, rr2 = lh*0.22;
-    octx.font = `600 ${Math.round(lh*0.36)}px sans-serif`; octx.textBaseline = "middle"; octx.textAlign = "left";
-    for (const c of used) { octx.beginPath(); octx.arc(lx + rr2, ly, rr2, 0, Math.PI*2); octx.fillStyle = c.color; octx.fill();
-      octx.fillStyle = "#1d2321"; octx.fillText(c.name, lx + rr2*2.6, ly); lx += rr2*2.6 + octx.measureText(c.name).width + lh*0.6; }
-  }
-  const overview = jpeg(ov, 0.9);
+  // raster overview (used in Word, and in the PDF when the drawing is not a PDF)
+  const rasterOverview = (tg, legend) => {
+    const lh = legend.length ? Math.round(Math.max(base.width, base.height) * 0.045) : 0;
+    const ov = document.createElement("canvas"); ov.width = base.width; ov.height = base.height + lh;
+    const octx = ov.getContext("2d"); octx.fillStyle = "#fff"; octx.fillRect(0,0,ov.width,ov.height); octx.drawImage(base,0,0);
+    drawOverviewTags(octx, base.width, base.height, tg);
+    if (legend.length) {
+      let lx = lh*0.4; const ly = base.height + lh/2, rr2 = lh*0.22;
+      octx.font = `600 ${Math.round(lh*0.36)}px sans-serif`; octx.textBaseline = "middle"; octx.textAlign = "left";
+      for (const c of legend) { octx.beginPath(); octx.arc(lx + rr2, ly, rr2, 0, Math.PI*2); octx.fillStyle = c.color; octx.fill();
+        octx.fillStyle = "#1d2321"; octx.fillText(c.name, lx + rr2*2.6, ly); lx += rr2*2.6 + octx.measureText(c.name).width + lh*0.6; }
+    }
+    return jpeg(ov, 0.9);
+  };
+  const overview = rasterOverview(tags, used);
+  const noteOverview = noteTags.length ? rasterOverview(noteTags, []) : null;
 
   // location images: cut from the PDF itself when there is one, otherwise from the picture
-  const cropPx = fromPdf ? 1200 : 900, cropPy = Math.round(cropPx*CROP_H_MM/CROP_W_MM);
+  const cropPx = fromPdf ? 1000 : 900, cropPy = Math.round(cropPx*CROP_H_MM/cropW());
   const items = pts.flatMap(pt => places(pt).map(item => ({ pt, item })));
-  const rows = items.map(({ pt, item }) => ({ n: item.label, key: pt.n*1000 + item.k + 1, prio: pt.prio || null, desc: pt.desc || "", floorName: f.name,
-    cat: catName(pt), catColor: catColor(pt), nPhotos: item.photos.length, crop: null, photo: item.photos.length ? item.photos : null, hadPhoto: item.photos.length > 0, _pt: pt, _item: item }));
-  await inParallel(rows, fromPdf ? 3 : 6, async row => {
+  const rows = items.map(({ pt, item }) => ({ n: item.label, key: pt.n*1000 + item.k + 1, note: isNote(pt), prio: pt.prio || null, desc: (isNote(pt) && p_multi(f) ? f.name + ": " : "") + (pt.desc || ""), floorName: f.name,
+    cat: catName(pt), catColor: catColor(pt), chk: item.k < 0 ? checkSummary(pt) : null, chkItems: item.k < 0 ? checkItems(pt) : null, nPhotos: item.photos.length, crop: null, locText: placed(item) ? "" : "Ej placerad på ritningen", photo: item.photos.length ? item.photos : null, hadPhoto: item.photos.length > 0, _pt: pt, _item: item }));
+  await inParallel(rows.filter(r => placed(r._item)), fromPdf ? 3 : 6, async row => {
     const { _pt: pt, _item: item } = row;
-    const sw = Math.max(base.width, base.height) * CROP_SPAN, sh = sw*CROP_H_MM/CROP_W_MM;
+    const sw = Math.max(base.width, base.height) * CROP_SPAN, sh = sw*CROP_H_MM/cropW();
     const sx = item.x*base.width - sw/2, sy = item.y*base.height - sh/2;
     let cc = null;
     if (fromPdf) { try { cc = await renderPdfRegion(d, sx/base.width, sy/base.height, sw/base.width, sh/base.height, cropPx, cropPy); } catch(e) { cc = null; } }
@@ -1495,40 +1716,84 @@ async function buildFloor(f){
       cx.fillStyle = "rgba(226,85,27,.18)"; cx.fillRect(rx, ry, rw*k2, rh*k2);
       cx.lineWidth = 4*u; cx.strokeStyle = "#e2551b"; cx.strokeRect(rx, ry, rw*k2, rh*k2);
       cx.lineWidth = 3*u; cx.strokeStyle = "#1d2321"; cx.strokeRect(px, py, pw, ph); }
-    row.crop = jpeg(cc, 0.88);
+    row.crop = jpeg(cc, 0.8);
   });
-  await inParallel(rows.filter(r => r.photo), 4, async r => { try { r.photo = await collage(r.photo); } catch(e) { r.photo = null; } });
+  rows.forEach(r => { r.photoSrc = r.photo; r.photo = null; }); // photos are encoded later, at a quality that keeps the file under the size limit
   rows.forEach(r => { delete r._pt; delete r._item; });
-  return { overview, rows, vector: fromPdf && window.PDFLib ? { drawing: d, tags, used } : null };
+  const vec = fromPdf && window.PDFLib;
+  return { overview, noteOverview, rows, vector: vec ? { drawing: d, tags, used } : null, noteVector: vec && noteTags.length ? { drawing: d, tags: noteTags, used: [] } : null,
+    nMain: pts.filter(pt => !isNote(pt)).length, nNotes: pts.filter(isNote).length };
 }
 async function inParallel(list, limit, fn){ let i = 0; await Promise.all(Array.from({ length: Math.min(limit, list.length) }, async () => { while (i < list.length) await fn(list[i++]); })); }
 async function buildReport(p){
-  const o = expOpt(p); useCats(o.cat ? p : null); setCols(o.prio); // without categories every number gets the same colour
+  const o = expOpt(p); useCats(o.cat ? p : null); setCols(o.prio, p.floors.some(f => f.drawing), o.cat && allPts(p).some(pt => catOf(pt))); // without categories every number gets the same colour
   const overviews = [], rows = [], groups = [];
   const built = [];
+  MULTI_FLOORS = p.floors.length > 1;
   for (const f of p.floors) built.push(await buildFloor(f)); // one floor at a time keeps memory down
-  for (const [fi, f] of p.floors.entries()) { const r = built[fi]; overviews.push({ name: f.name, img: r.overview, vector: r.vector, count: (f.points||[]).length }); rows.push(...r.rows); groups.push({ name: f.name, rows: r.rows }); }
+  const notes = [], noteOverviews = [];
+  for (const [fi, f] of p.floors.entries()) { const r = built[fi]; if (r.overview) overviews.push({ name: f.name, img: r.overview, vector: r.vector, count: r.nMain });
+    if (r.noteOverview) noteOverviews.push({ name: f.name, img: r.noteOverview, vector: r.noteVector, count: r.nNotes, note: true });
+    if (!o.chk) r.rows.forEach(x => { x.chk = null; x.chkItems = null; }); // setting under Mer: leave out types and checkpoints
+    rows.push(...r.rows);
+    groups.push({ name: f.name, rows: r.rows.filter(x => !x.note) }); notes.push(...r.rows.filter(x => x.note)); }
   rows.sort((a,b)=>a.key-b.key);
-  return { name: p.name, info: p.info || {}, date: (p.info && p.info.date) || new Date().toLocaleDateString("sv-SE"), overviews, rows, groups: groups.filter(g => g.rows.length), multi: p.floors.length > 1 };
+  if (notes.length) groups.push({ name: "Noteringar", note: true, rows: notes.sort((a,b) => a.key - b.key) });
+  return { name: p.name, info: p.info || {}, date: (p.info && p.info.date) || new Date().toLocaleDateString("sv-SE"), overviews, noteOverviews, rows, groups: groups.filter(g => g.rows.length), multi: p.floors.length > 1 };
 }
 const pk = n => n + (n === 1 ? " punkt" : " punkter");
+// Report style (PDF and Word): Arial/Helvetica 10 pt black, main headings bold 22 pt between red lines,
+// tables without fill or vertical lines: bold header between thick lines, thin lines between rows, thick line at the end.
+const RS = { red: "#F9423A", h1: 22, body: 10, cap: 8, thick: 1.5, thin: 0.75 };
+const footText = R => [R.info && R.info.nr, R.name].filter(Boolean).join(" • ");
 const hexRgb = h6 => [1,3,5].map(i => parseInt(h6.slice(i, i+2), 16));
 // Several photos share the photo cell: 1 fills it, 2 side by side, 3–4 in a grid, more shows "+N"
-async function collage(list){
-  const W = 900, H = Math.round(W * (ROW_H - 2*CELL_PAD) / (COLS[CI.photo].w - 2*CELL_PAD));
+// Photo quality steps for exports, best first: [longest side in px, JPEG quality].
+// The export uses the best step that keeps the file under 20 MB, but never goes below the last one,
+// where details such as door labels are still readable.
+const PHOTO_LEVELS = [[1500, .85], [1200, .82], [1000, .8], [800, .78], [650, .72], [520, .66], [420, .6]];
+const MAX_EXPORT = 20 * 1024 * 1024;
+async function collage(list, level = PHOTO_LEVELS[3]){
+  const [maxPx, q] = level;
+  const W = Math.round(maxPx * 0.9), H = Math.round(W * (ROW_H - 2*CELL_PAD) / (COLS[CI.photo].w - 2*CELL_PAD));
   const imgs = []; for (const ph of list.slice(0, 4)) { try { imgs.push(await loadImg(src(ph))); } catch(e){} }
   if (!imgs.length) return null;
-  if (imgs.length === 1) { const im = imgs[0]; const c = document.createElement("canvas"); const k = Math.min(1, 1200/Math.max(im.naturalWidth, im.naturalHeight));
-    c.width = Math.round(im.naturalWidth*k); c.height = Math.round(im.naturalHeight*k); c.getContext("2d").drawImage(im,0,0,c.width,c.height); return jpeg(c, 0.82); }
+  if (imgs.length === 1) { const im = imgs[0]; const c = document.createElement("canvas"); const k = Math.min(1, maxPx/Math.max(im.naturalWidth, im.naturalHeight));
+    c.width = Math.round(im.naturalWidth*k); c.height = Math.round(im.naturalHeight*k); c.getContext("2d").drawImage(im,0,0,c.width,c.height); return jpeg(c, q); }
   const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
   x.fillStyle = "#fff"; x.fillRect(0,0,W,H);
-  const g = 8, cols = 2, rows = imgs.length === 2 ? 1 : 2, tw = (W - g)/cols, th = (H - g*(rows-1))/rows;
+  const g = Math.round(W/90), cols = 2, rows = imgs.length === 2 ? 1 : 2, tw = (W - g)/cols, th = (H - g*(rows-1))/rows;
   imgs.forEach((im, i) => { const cx = (i % cols)*(tw+g), cy = Math.floor(i/cols)*(th+g);
     const s2 = Math.max(tw/im.naturalWidth, th/im.naturalHeight), sw = tw/s2, sh = th/s2;
     x.drawImage(im, (im.naturalWidth-sw)/2, (im.naturalHeight-sh)/2, sw, sh, cx, cy, tw, th); });
   if (list.length > 4) { const cx = tw+g, cy = th+g; x.fillStyle = "rgba(0,0,0,.55)"; x.fillRect(cx, cy, tw, th);
     x.fillStyle = "#fff"; x.font = `700 ${Math.round(th*0.3)}px sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("+" + (list.length - 3), cx + tw/2, cy + th/2); }
-  return jpeg(c, 0.82);
+  return jpeg(c, q);
+}
+const PHOTO_IDS = new WeakMap(); let photoSeq = 0;
+const photoKey = list => list.map(ph => thumbKey(ph) || "u" + (PHOTO_IDS.get(ph) || (PHOTO_IDS.set(ph, ++photoSeq), photoSeq))).join("|");
+// Encodes every row's photos at one quality step; the same photo set is encoded once
+async function encodePhotos(R, li){
+  const cache = new Map();
+  await inParallel(R.rows.filter(r => r.photoSrc), 4, async r => {
+    const k = photoKey(r.photoSrc);
+    if (!cache.has(k)) cache.set(k, collage(r.photoSrc, PHOTO_LEVELS[li]).catch(() => null));
+    r.photo = await cache.get(k);
+  });
+}
+// Picks the best quality step whose estimated file size stays under the limit, from a sample of the photos
+async function choosePhotoLevel(R, kind){
+  const b64 = d => d ? d.data.length * 0.75 : 0;
+  let fixed = 400 * 1024 + R.rows.reduce((a, r) => a + b64(r.crop), 0);
+  if (kind === "pdf") fixed += R.overviews.concat(R.noteOverviews || []).reduce((a, o) => a + (o.vector ? 50 * 1024 : b64(o.img)), 0);
+  const sets = new Map(); R.rows.forEach(r => { if (r.photoSrc) sets.set(photoKey(r.photoSrc), r.photoSrc); });
+  const uniq = [...sets.values()]; if (!uniq.length) return 0;
+  const sample = uniq.length <= 8 ? uniq : Array.from({ length: 8 }, (_, i) => uniq[Math.floor(i * uniq.length / 8)]);
+  for (let li = 0; li < PHOTO_LEVELS.length; li++) {
+    let sum = 0; for (const set of sample) { try { sum += b64(await collage(set, PHOTO_LEVELS[li])); } catch(e) {} }
+    if (fixed + sum / sample.length * uniq.length <= MAX_EXPORT * 0.96) return li;
+  }
+  return PHOTO_LEVELS.length - 1;
 }
 function fit(w, h, maxW, maxH){ const s = Math.min(maxW/w, maxH/h); return { w: w*s, h: h*s }; }
 
@@ -1571,8 +1836,28 @@ function flattenAnnots(doc, page){
   return ops.length;
 }
 
+/* --- Hyphenation of words too long for a table cell, roughly by Swedish syllable rules:
+   break before the last consonant in front of a vowel (ga-ta, brand-cells), but keep bl, br, dr, fl, fr, gl, gr, kl, kr, kv, pl, pr, tr, tv
+   together (cells-gräns), start the next part with s + consonant after another consonant (brand-skydd), and never split ng or ck. At least two letters stay on each side. --- */
+const HY_V = /[aeiouyåäöéüæø]/i, HY_L = /[a-zåäöéüæø]/i;
+const HY_ON = new Set(["bl","br","dr","fl","fr","gr","kl","kr","kv","pl","pr","tr","tv"]);
+function hyphPoints(w){
+  const pts = [];
+  for (let i = 1; i < w.length; i++) {
+    if (!HY_V.test(w[i])) continue;
+    let j = i; while (j > 0 && HY_L.test(w[j-1]) && !HY_V.test(w[j-1])) j--;
+    if (j === i || j === 0 || !HY_V.test(w[j-1])) continue; // need vowel, consonants, vowel
+    const run = w.slice(j, i).toLowerCase();
+    // s + consonant starts the next part after another consonant (brand-skydd, dörr-stängare), but not after -ng (förings-tätning)
+    const sOn = run.length >= 3 && /^s[kptlmnv]$/.test(run.slice(-2)) && run[run.length - 3] !== "g";
+    const on = run.length >= 2 && (HY_ON.has(run.slice(-2)) || sOn) ? 2 : 1;
+    let k = i - on; if (/^(ng|ck)$/i.test(w.slice(k - 1, k + 1))) k++; // ng and ck are never split (ning-en, släck-ut)
+    if (k >= 2 && w.length - k >= 2 && !pts.includes(k)) pts.push(k);
+  }
+  return pts;
+}
 /* --- PDF, built with pdf-lib: the overview keeps the original drawing as vector graphics --- */
-async function makePdf(R){
+async function makePdf(R, opt = {}){ // opt.tables === false: only the overview drawings
   const { PDFDocument, StandardFonts, rgb, degrees } = window.PDFLib;
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica), bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -1593,16 +1878,35 @@ async function makePdf(R){
   const images = new Map();
   const image = async (img, x, y, w, h) => { let e = images.get(img.data); if (!e) { e = await doc.embedJpg(img.data); images.set(img.data, e); }
     P.page.drawImage(e, { x: x*MM, y: (P.H - y - h)*MM, width: w*MM, height: h*MM }); };
+  const LT = RS.thick, LN = RS.thin; // line widths in points
+  const hline = (x1, x2, y1, w) => P.page.drawLine({ start: { x: x1*MM, y: (P.H - y1)*MM }, end: { x: x2*MM, y: (P.H - y1)*MM }, thickness: w, color: grey(0) });
+  // main heading: bold 22 pt between two red lines; returns the y below it
+  const h1 = (t, x, y0, w) => { let size = RS.h1; while (size > 12 && bold.widthOfTextAtSize(safe(t, bold), size) > w*MM) size -= 1;
+    P.page.drawLine({ start: { x: x*MM, y: (P.H - y0)*MM }, end: { x: (x+w)*MM, y: (P.H - y0)*MM }, thickness: LT, color: col(RS.red) });
+    const sm = size*0.3528, base = y0 + 1.8 + sm*0.85; // room for Å, Ä, Ö above the letters
+    text(t, x, base, size, { bold: true });
+    const yb = base + sm*0.22 + 1.4;
+    P.page.drawLine({ start: { x: x*MM, y: (P.H - yb)*MM }, end: { x: (x+w)*MM, y: (P.H - yb)*MM }, thickness: LT, color: col(RS.red) });
+    return yb + 4.5; };
+  const fits = (t, width, size) => font.widthOfTextAtSize(safe(t), size) <= width*MM;
   const wrap = (t, width, size) => { const out = []; for (const para of String(t).split(/\r?\n/)) { let cur = "";
-    for (const word of para.split(/\s+/)) { const tryS = cur ? cur + " " + word : word;
-      if (font.widthOfTextAtSize(safe(tryS), size) <= width*MM || !cur) cur = tryS; else { out.push(cur); cur = word; } }
+    for (let word of para.split(/\s+/)) { const tryS = cur ? cur + " " + word : word;
+      if (fits(tryS, width, size)) { cur = tryS; continue; }
+      if (cur) { out.push(cur); cur = ""; }
+      while (word.length > 4 && !fits(word, width, size)) { // too long for a whole line: split it with a hyphen, at a syllable when possible
+        const ok = hyphPoints(word).filter(k => fits(word.slice(0, k) + "-", width, size));
+        let k = ok.length ? ok[ok.length - 1] : word.length - 2;
+        if (!ok.length) while (k > 2 && !fits(word.slice(0, k) + "-", width, size)) k--;
+        out.push(word.slice(0, k) + "-"); word = word.slice(k); }
+      cur = word; }
     out.push(cur); } return out; };
 
   // overview pages
-  for (const [i, ov] of R.overviews.entries()) {
+  const overviewPage = async (ov, i, list) => {
     const land = ov.img.w > ov.img.h; newPage(land ? 297 : 210, land ? 210 : 297);
-    text(R.multi ? R.name + " – " + ov.name : R.name, M, M+4, 16, { bold: true });
-    text([infoLine(R.info) || R.date, pk(ov.count), "Översikt" + (R.multi ? " " + (i+1) + " av " + R.overviews.length : "")].join(" · "), M, M+9, 9, { color: grey(110) });
+    const yT = h1("Översiktsritning" + (ov.note ? " – Noteringar" : "") + (R.multi ? " – " + ov.name : ""), M, M - 2, P.W - 2*M);
+    text(infoLine(R.info) || R.date, M, yT, RS.body);
+    const TOP = yT + 3 - M; // space taken above the drawing
     const v = ov.vector; let placedVector = false;
     if (v) {
       try {
@@ -1617,8 +1921,8 @@ async function makePdf(R){
         catch(err) { if (Array.isArray(doc.embeddedPages)) doc.embeddedPages = doc.embeddedPages.filter(x => x !== emb); throw err; }
         const dw = rot % 180 ? cb.height : cb.width, dh = rot % 180 ? cb.width : cb.height; // as shown on screen
         const legendH = v.used.length ? 9 : 0;
-        const f2 = fit(dw, dh, (P.W - 2*M)*MM, (P.H - 2*M - 14 - legendH)*MM); const s = f2.w / dw;
-        const ox = M*MM + ((P.W - 2*M)*MM - f2.w)/2, oyTop = (P.H - M - 14)*MM;   // top-left of the drawing, in points
+        const f2 = fit(dw, dh, (P.W - 2*M)*MM, (P.H - 2*M - TOP - legendH - 8)*MM); const s = f2.w / dw;
+        const ox = M*MM + ((P.W - 2*M)*MM - f2.w)/2, oyTop = (P.H - M - TOP)*MM;   // top-left of the drawing, in points
         const w = cb.width*s, h = cb.height*s;
         // pdf-lib rotates counter-clockwise around the drawing's bottom-left corner
         const at = { 0: [ox, oyTop - f2.h], 90: [ox, oyTop], 180: [ox + f2.w, oyTop], 270: [ox + f2.w, oyTop - f2.h] }[rot];
@@ -1645,46 +1949,80 @@ async function makePdf(R){
         placedVector = true;
       } catch(e) { placedVector = false; }
     }
-    if (!placedVector) { const o = fit(ov.img.w, ov.img.h, P.W - 2*M, P.H - 2*M - 14); await image(ov.img, M + (P.W - 2*M - o.w)/2, M + 14, o.w, o.h); }
-  }
-
-  // table pages: Nr | Prio | Beskrivning | Läge | Foto
-  const H = 297, TM = 12, BM = 14, headH = 8, pad = CELL_PAD;
-  const xs = [M]; COLS.forEach(c => xs.push(xs[xs.length-1] + c.w));
-  let y = 0;
-  const header = (g, cont) => {
-    newPage(210, 297);
-    text(R.name, M, TM+2, 11);
-    if (infoLine(R.info)) text(infoLine(R.info), M+186, TM+2, 8.5, { align: "right", color: grey(110) });
-    y = TM + 6;
-    if (R.multi) {
-      rect(M, y, 186, 11, { color: col("#e2551b") });
-      text(g.name + (cont ? " (forts.)" : ""), M+3, y+7.5, 13, { color: rgb(1,1,1) });
-      text(pk(g.rows.length), M+183, y+7.3, 9.5, { align: "right", color: rgb(1,1,1) });
-      y += 13;
-    }
-    rect(M, y, 186, headH, { color: grey(29) });
-    COLS.forEach((c, i) => text(c.t, xs[i]+pad, y+5.4, 10, { color: rgb(1,1,1) }));
-    y += headH;
+    if (!placedVector) { const o = fit(ov.img.w, ov.img.h, P.W - 2*M, P.H - 2*M - TOP - 8); await image(ov.img, M + (P.W - 2*M - o.w)/2, M + TOP, o.w, o.h); }
   };
-  for (const g of R.groups) {
+
+  // table pages: Nr | Prio | Kategori | Beskrivning | Läge | Foto
+  const H = 297, TM = 12, BM = 16, headH = 7.5, pad = CELL_PAD;
+  const xs = [M]; COLS.forEach(c => xs.push(xs[xs.length-1] + c.w));
+  const tx = i => xs[i] + (i === 0 ? 0 : pad); // text starts at the column edge in the first column, as in the template
+  let y = 0, firstTable = true;
+  const colHead = () => { hline(M, M+186, y, LT);
+    COLS.forEach((c, i) => text(c.t, tx(i), y + 5, RS.body, { bold: true }));
+    y += headH; hline(M, M+186, y, LT); };
+  const header = (g, cont) => {
+    newPage(210, 297); y = TM;
+    if (!cont) { y = h1(g.note ? "Noteringar" : R.multi ? g.name : "Inventering", M, y, 186);
+      if (firstTable) { text(infoLine(R.info) || R.date, M, y, RS.body); y += 5; firstTable = false; } }
+    colHead();
+  };
+  const endTable = () => hline(M, M+186, y, LT); // thick line where the table ends (also before a page break)
+  const tablePages = async gs => { for (const g of gs) {
     header(g, false);
+    g.rows.forEach((row, ri) => { row._last = ri === g.rows.length - 1; });
     for (const row of g.rows) {
-      if (y + ROW_H > H - BM) header(g, true);
-      rect(M, y, 186, ROW_H, { borderColor: grey(190), borderWidth: 0.7 });
-      for (let i = 1; i < COLS.length; i++) line(xs[i], y, xs[i], y+ROW_H, { thickness: 0.7, color: grey(190) });
-      text(String(row.n), xs[CI.nr] + COLS[CI.nr].w/2, y+pad+6, 13, { align: "center" });
-      if (CI.prio != null && row.prio) text(String(row.prio), xs[CI.prio] + COLS[CI.prio].w/2, y+pad+6, 13, { align: "center" });
-      const lines = wrap(row.desc || "Ingen beskrivning", COLS[CI.desc].w - 2*pad, 10).slice(0, 9);
-      lines.forEach((l, li) => text(l, xs[CI.desc]+pad, y+pad+4.5 + li*4.4, 10, { color: row.desc ? grey(0) : grey(130) }));
-      if (row.crop) await image(row.crop, xs[CI.loc]+pad, y+pad, CROP_W_MM, CROP_H_MM);
+      if (y + ROW_H + checkBlockH(row) > H - BM) { endTable(); header(g, true); } // the point and its checkpoints stay on the same page
+      text(String(row.n), tx(CI.nr), y+pad+3.6, RS.body);
+      if (CI.prio != null && row.prio) text(String(row.prio), tx(CI.prio), y+pad+3.6, RS.body);
+      // long descriptions get a smaller font so the whole text fits in the row
+      let size = RS.body, lines = [];
+      for (size of [10, 9, 8, 7.5, 7]) { lines = wrap(row.desc || "Ingen beskrivning", COLS[CI.desc].w - 2*pad, size); if (lines.length <= Math.floor((ROW_H - pad - 3) / (size*0.44))) break; }
+      const maxL = Math.floor((ROW_H - pad - 3) / (size*0.44));
+      if (lines.length > maxL) { lines = lines.slice(0, maxL); lines[maxL-1] = lines[maxL-1].replace(/\s*\S*$/, "") + " …"; }
+      lines.forEach((l, li) => text(l, tx(CI.desc), y+pad + size*0.36 + li*size*0.44, size, { color: row.desc ? grey(0) : grey(130) }));
+      if (CI.cat != null && row.cat) wrap(row.cat, COLS[CI.cat].w - 2*pad, size).slice(0, maxL).forEach((l, li) => text(l, tx(CI.cat), y+pad + size*0.36 + li*size*0.44, size));
+      if (CI.loc != null) { if (row.crop) await image(row.crop, xs[CI.loc]+pad, y+pad, cropW(), CROP_H_MM);
+        else if (row.locText) text(row.locText, tx(CI.loc), y+pad+3.6, 9, { color: grey(110) }); }
       if (row.photo) {
         const bw = COLS[CI.photo].w - 2*pad, bh = ROW_H - 2*pad; const f = fit(row.photo.w, row.photo.h, bw, bh);
         await image(row.photo, xs[CI.photo]+pad+(bw-f.w)/2, y+pad+(bh-f.h)/2, f.w, f.h);
-      } else if (row.hadPhoto) text("Fotot kunde inte läsas", xs[CI.photo]+pad, y+pad+4.5, 9, { color: grey(130) });
+      } else if (row.hadPhoto) text("Fotot kunde inte läsas", tx(CI.photo), y+pad+3.6, 9, { color: grey(110) });
       y += ROW_H;
+      if (row.chkItems) checkBlock(row);
+      if (row._last) endTable(); else hline(M, M+186, y, LN);
     }
-  }
+  } };
+  // checkpoints of an object type: a small table right under the point, indented past the number column
+  const CK_X0 = M + COLS[CI.nr].w, CK_W = [186 - COLS[CI.nr].w - 46 - 30, 46, 30], CK_X = [CK_X0, CK_X0 + CK_W[0], CK_X0 + CK_W[0] + 46];
+  const ckRows = row => row.chkItems.map(it => { const tl = wrap(it.text, CK_W[0] - pad, 9), rl = wrap(it.ref, CK_W[1] - pad, 9);
+    return { it, tl, rl, rh: Math.max(tl.length, rl.length, 1) * 3.9 + 2.2 }; });
+  const checkBlockH = row => row.chkItems ? 5 + 6 + ckRows(row).reduce((a, r) => a + r.rh, 0) + 3 : 0;
+  const checkBlock = row => {
+    text("Kontrollpunkter " + row.chk.t.name.toLowerCase() + ", punkt " + row.n, CK_X[0], y + 3.6, RS.cap);
+    y += 5;
+    hline(CK_X0, M+186, y, LN);
+    ["Kontrollpunkt", "Hänvisning " + BFS, "Bedömning"].forEach((t2, i) => text(t2, CK_X[i] + (i ? pad : 0), y + 4.2, 9, { bold: true }));
+    y += 6; hline(CK_X0, M+186, y, LN);
+    for (const { it, tl, rl, rh } of ckRows(row)) {
+      tl.forEach((l, i) => text(l, CK_X[0], y+3.9 + i*3.9, 9));
+      rl.forEach((l, i) => text(l, CK_X[1]+pad, y+3.9 + i*3.9, 9));
+      text(CHECK[it.s] ? CHECK[it.s].label : "Ej bedömd", CK_X[2]+pad, y+3.9, 9, { color: CHECK[it.s] ? grey(0) : grey(110) });
+      y += rh; hline(CK_X0, M+186, y, it === row.chkItems[row.chkItems.length - 1] ? LN : 0.3);
+    }
+    y += 3;
+  };
+  // order: drawings, table, then the notes (their own drawings and table) last
+  const showOv = opt.overview !== false, showTb = opt.tables !== false;
+  if (showOv) for (const [i, ov] of R.overviews.entries()) await overviewPage(ov, i, R.overviews);
+  if (showTb) await tablePages(R.groups.filter(g => !g.note));
+  if (showOv) for (const [i, ov] of (R.noteOverviews || []).entries()) await overviewPage(ov, i, R.noteOverviews);
+  if (showTb) await tablePages(R.groups.filter(g => g.note));
+  if (!doc.getPageCount()) { newPage(210, 297); const y1 = h1(R.name, M, M, 186); text(infoLine(R.info) || R.date, M, y1, RS.body); text("Inga objekt än.", M, y1 + 8, RS.body); }
+  // footer on every page: assignment number • name | page, right-aligned in bold
+  doc.getPages().forEach((pg, i) => { P.page = pg; P.W = pg.getWidth()/MM; P.H = pg.getHeight()/MM;
+    let ft = safe(footText(R), bold); const room = (P.W - 2*M - 15) * MM; // a very long name is shortened with …
+    while (ft.length > 3 && bold.widthOfTextAtSize(ft, RS.cap) > room) ft = ft.slice(0, -2).trimEnd() + "…";
+    text(ft + "  |  " + (i + 1), P.W - M, P.H - 7, RS.cap, { bold: true, align: "right" }); });
   return new Blob([await doc.save()], { type: "application/pdf" });
 }
 
@@ -1711,14 +2049,16 @@ function zipStore(files, type){ // files: [{name, data:Uint8Array}]
   return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
 }
 function b64bytes(dataUrl){ const s = atob(dataUrl.split(",")[1]); const u = new Uint8Array(s.length); for (let i=0;i<s.length;i++) u[i] = s.charCodeAt(i); return u; }
-const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const esc = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
-function makeDocx(R){
+function makeDocx(R, opt = {}){ // opt.overview === false: only the tables (the drawings go in a separate PDF)
   const enc = new TextEncoder(); const media = []; let picId = 0;
   const EMU = 36000, TW = 56.6929; // per mm
+  const seen = new Map();
   const img = (im, wmm, hmm) => {
-    const rid = "rIdImg" + (media.length+1); const file = "image" + (media.length+1) + ".jpeg";
-    media.push({ rid, file, data: b64bytes(im.data) }); picId++;
+    let m = seen.get(im.data);
+    if (!m) { m = { rid: "rIdImg" + (media.length+1), file: "image" + (media.length+1) + ".jpeg" }; media.push({ ...m, data: b64bytes(im.data) }); seen.set(im.data, m); }
+    const { rid, file } = m; picId++;
     const cx = Math.round(wmm*EMU), cy = Math.round(hmm*EMU);
     return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${picId}" name="Bild ${picId}"/>`+
       `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">`+
@@ -1728,61 +2068,99 @@ function makeDocx(R){
       `</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
   };
   const para = (inner, ppr="") => `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/>${ppr}</w:pPr>${inner}</w:p>`;
+  const styled = (style, inner, ppr="") => `<w:p><w:pPr><w:pStyle w:val="${style}"/>${ppr}</w:pPr>${inner}</w:p>`;
   const run = (t, rpr="") => `<w:r><w:rPr>${rpr}</w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
   const textParas = (t, rpr) => String(t).split(/\r?\n/).map(line => para(run(line, rpr))).join("");
   const tw = mm => Math.round(mm*TW);
-  const cell = (wmm, content, opts={}) => `<w:tc><w:tcPr><w:tcW w:w="${tw(wmm)}" w:type="dxa"/>${opts.fill?`<w:shd w:val="clear" w:color="auto" w:fill="${opts.fill}"/>`:""}<w:vAlign w:val="${opts.v||"top"}"/></w:tcPr>${content}</w:tc>`;
+  // borders per cell: top/bottom as "thick" (1.5 pt), "thin" (0.75 pt), "hair" (0.25 pt) or none
+  const BSZ = { thick: 12, thin: 6, hair: 2 };
+  const bd = (side, k) => k ? `<w:${side} w:val="single" w:sz="${BSZ[k]}" w:space="0" w:color="000000"/>` : `<w:${side} w:val="nil"/>`;
+  const cell = (wmm, content, opts={}) => `<w:tc><w:tcPr><w:tcW w:w="${tw(wmm)}" w:type="dxa"/>${opts.span ? `<w:gridSpan w:val="${opts.span}"/>` : ""}<w:tcBorders>${bd("top", opts.top)}${bd("left")}${bd("bottom", opts.bottom)}${bd("right")}</w:tcBorders>${opts.mar ? `<w:tcMar><w:left w:w="${tw(opts.mar)}" w:type="dxa"/></w:tcMar>` : ""}<w:vAlign w:val="${opts.v||"top"}"/></w:tcPr>${content}</w:tc>`;
+  // category column: coloured left edge and the name, smaller when its longest word would not fit (Calibri bold ≈ 0.55 em per letter)
+  const descSz = (row) => ((L) => L > 250 ? 16 : L > 190 ? 18 : 20)((row.desc || "").length * 46 / COLS[CI.desc].w);
+  // words that cannot fit on one line of a column get soft hyphens, so Word splits them with a hyphen (Calibri ≈ 0.5 em per letter)
+  const hyph = (t, wmm, hp) => { const cap = Math.floor((wmm - 2*CELL_PAD) / (hp/2 * 0.5 * 0.3528));
+    return String(t).replace(/\S+/g, w => { if (w.length <= cap) return w;
+      const pts = hyphPoints(w); const at = new Set(pts.length ? pts : Array.from({ length: Math.max(0, w.length - 3) }, (_, i) => i + 2));
+      return [...w].map((ch, i) => (at.has(i) ? "\u00AD" : "") + ch).join(""); }); };
+  const catCell = (row, b) => cell(COLS[CI.cat].w, row.cat ? para(run(hyph(row.cat, COLS[CI.cat].w, descSz(row)), `<w:sz w:val="${descSz(row)}"/>`)) : para(""), { bottom: b, mar: CELL_PAD });
 
-  // one overview page per floor
-  let body = "";
-  R.overviews.forEach((ov, i) => {
-    const o = fit(ov.img.w, ov.img.h, 186, 235);
-    body += para(run(R.multi ? R.name + " – " + ov.name : R.name, `<w:b/><w:sz w:val="32"/>`)) +
-      para(run([infoLine(R.info) || R.date, pk(ov.count), "Översikt" + (R.multi ? " " + (i+1) + " av " + R.overviews.length : "")].join(" · "), `<w:color w:val="6E6E6E"/><w:sz w:val="18"/>`), `<w:spacing w:before="0" w:after="160"/>`) +
+  // one overview page per floor; the notes get their own drawings, placed just before the notes table
+  let infoDone = false;
+  const info = () => { if (infoDone) return ""; infoDone = true; return styled("Normal", run(infoLine(R.info) || R.date), `<w:spacing w:before="0" w:after="160"/>`); };
+  const ovXml = (ov, i, list) => { const o = fit(ov.img.w, ov.img.h, 186, 225);
+    return styled("Heading1", run("Översiktsritning" + (ov.note ? " – Noteringar" : "") + (R.multi ? " – " + ov.name : ""))) + info() +
       para(img(ov.img, o.w, o.h), `<w:jc w:val="center"/>`) +
-      `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
-  });
+      `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`; };
+  let body = "";
+  if (opt.overview !== false) R.overviews.forEach((ov, i) => { body += ovXml(ov, i, R.overviews); });
 
-  // table
-  const border = `<w:tblBorders>${["top","left","bottom","right","insideH","insideV"].map(s=>`<w:${s} w:val="single" w:sz="4" w:space="0" w:color="BEBEBE"/>`).join("")}</w:tblBorders>`;
+  // table: bold header between thick lines, thin lines between the points, thick line at the end
+  const mar = `<w:tblCellMar><w:top w:w="${tw(1.2)}" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="${tw(1.2)}" w:type="dxa"/><w:right w:w="${tw(1)}" w:type="dxa"/></w:tblCellMar>`;
   let out = "";
   R.groups.forEach((g, gi) => {
   if (gi > 0) out += `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
-  if (R.multi) out += `<w:tbl><w:tblPr><w:tblW w:w="${tw(186)}" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="${tw(186)}"/></w:tblGrid><w:tr>` +
-    cell(186, para(run(g.name, `<w:b/><w:color w:val="FFFFFF"/><w:sz w:val="28"/>`) + run("   " + pk(g.rows.length), `<w:color w:val="FFFFFF"/><w:sz w:val="19"/>`)), {fill:"E2551B", v:"center"}) +
-    `</w:tr></w:tbl>` + para("", `<w:spacing w:before="0" w:after="80"/>`);
-  let tbl = `<w:tbl><w:tblPr><w:tblW w:w="${tw(186)}" w:type="dxa"/><w:tblLayout w:type="fixed"/>${border}<w:tblCellMar><w:top w:w="${tw(CELL_PAD)}" w:type="dxa"/><w:left w:w="${tw(CELL_PAD)}" w:type="dxa"/><w:bottom w:w="${tw(CELL_PAD)}" w:type="dxa"/><w:right w:w="${tw(CELL_PAD)}" w:type="dxa"/></w:tblCellMar></w:tblPr>`;
+  if (g.note && opt.overview !== false && (R.noteOverviews || []).length) out += R.noteOverviews.map((ov, i) => ovXml(ov, i, R.noteOverviews)).join("");
+  out += styled("Heading1", run(g.note ? "Noteringar" : R.multi ? g.name : "Inventering")) + info();
+  let tbl = `<w:tbl><w:tblPr><w:tblW w:w="${tw(186)}" w:type="dxa"/><w:tblLayout w:type="fixed"/>${mar}</w:tblPr>`;
   tbl += `<w:tblGrid>${COLS.map(c=>`<w:gridCol w:w="${tw(c.w)}"/>`).join("")}</w:tblGrid>`;
-  tbl += `<w:tr><w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>${COLS.map(c => cell(c.w, para(run(c.t, `<w:b/><w:color w:val="FFFFFF"/><w:sz w:val="20"/>`)), {fill:"1D2321", v:"center"})).join("")}</w:tr>`;
-  for (const row of g.rows) {
+  tbl += `<w:tr><w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>${COLS.map((c, i) => cell(c.w, para(run(c.t, `<w:b/>`), `<w:spacing w:before="40" w:after="40"/>`), { top: "thick", bottom: "thick", mar: i ? CELL_PAD : 0 })).join("")}</w:tr>`;
+  g.rows.forEach((row, ri) => {
+    const last = ri === g.rows.length - 1, b = row.chkItems ? null : last ? "thick" : "thin";
     const bw = COLS[CI.photo].w - 2*CELL_PAD, bh = ROW_H - 2*CELL_PAD;
     const photo = row.photo ? (() => { const f = fit(row.photo.w, row.photo.h, bw, bh); return para(img(row.photo, f.w, f.h), `<w:jc w:val="center"/>`); })()
-      : row.hadPhoto ? para(run("Fotot kunde inte läsas", `<w:color w:val="828282"/><w:sz w:val="18"/>`)) : para("");
+      : row.hadPhoto ? para(run("Fotot kunde inte läsas", `<w:color w:val="6E6E6E"/><w:sz w:val="18"/>`)) : para("");
     tbl += `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="${tw(ROW_H)}" w:hRule="exact"/></w:trPr>` +
-      cell(COLS[CI.nr].w, para(run(String(row.n), `<w:b/><w:sz w:val="26"/>`), `<w:jc w:val="center"/>`)) +
-      (CI.prio != null ? cell(COLS[CI.prio].w, para(row.prio ? run(String(row.prio), `<w:b/><w:sz w:val="26"/>`) : "", `<w:jc w:val="center"/>`)) : "") +
-      cell(COLS[CI.desc].w, (row.desc ? textParas(row.desc, `<w:sz w:val="20"/>`) : para(run("Ingen beskrivning", `<w:i/><w:color w:val="828282"/><w:sz w:val="21"/>`)))) +
-      cell(COLS[CI.loc].w, para(img(row.crop, CROP_W_MM, CROP_H_MM))) +
-      cell(COLS[CI.photo].w, photo, {v:"center"}) + `</w:tr>`;
-  }
+      cell(COLS[CI.nr].w, para(run(String(row.n))), { bottom: b }) +
+      (CI.prio != null ? cell(COLS[CI.prio].w, para(row.prio ? run(String(row.prio)) : ""), { bottom: b, mar: CELL_PAD }) : "") +
+      (CI.cat != null ? catCell(row, b) : "") +
+      cell(COLS[CI.desc].w, (row.desc ? textParas(hyph(row.desc, COLS[CI.desc].w, descSz(row)), `<w:sz w:val="${descSz(row)}"/>`) : para(run("Ingen beskrivning", `<w:i/><w:color w:val="6E6E6E"/>`))), { bottom: b, mar: CELL_PAD }) +
+      (CI.loc != null ? cell(COLS[CI.loc].w, row.crop ? para(img(row.crop, cropW(), CROP_H_MM)) : para(row.locText ? run(row.locText, `<w:color w:val="6E6E6E"/><w:sz w:val="18"/>`) : ""), { bottom: b, mar: CELL_PAD }) : "") +
+      cell(COLS[CI.photo].w, photo, { v: "center", bottom: b, mar: CELL_PAD }) + `</w:tr>`;
+    if (row.chkItems) { // checkpoints: a small table in a row under the point, indented past the number column
+      const sw = 186 - COLS[CI.nr].w, cw = [sw - 46 - 30, 46, 30];
+      let ct = styled("Caption", run("Kontrollpunkter " + row.chk.t.name.toLowerCase() + ", punkt " + row.n));
+      ct += `<w:tbl><w:tblPr><w:tblW w:w="${tw(sw - CELL_PAD)}" w:type="dxa"/><w:tblLayout w:type="fixed"/>${mar}</w:tblPr><w:tblGrid>${cw.map(w => `<w:gridCol w:w="${tw(w)}"/>`).join("")}</w:tblGrid>`;
+      ct += `<w:tr><w:trPr><w:cantSplit/></w:trPr>` + ["Kontrollpunkt", "Hänvisning " + BFS, "Bedömning"].map((t3, i) => cell(cw[i], para(run(t3, `<w:b/><w:sz w:val="18"/>`)), { top: "thin", bottom: "thin", mar: i ? CELL_PAD : 0 })).join("") + `</w:tr>`;
+      row.chkItems.forEach((it, k) => { const lb = k === row.chkItems.length - 1 ? "thin" : "hair";
+        ct += `<w:tr><w:trPr><w:cantSplit/></w:trPr>` + cell(cw[0], para(run(it.text, `<w:sz w:val="18"/>`)), { bottom: lb }) +
+          cell(cw[1], para(run(it.ref, `<w:sz w:val="18"/>`)), { bottom: lb, mar: CELL_PAD }) +
+          cell(cw[2], para(run(CHECK[it.s] ? CHECK[it.s].label : "Ej bedömd", `<w:sz w:val="18"/>${CHECK[it.s] ? "" : `<w:color w:val="6E6E6E"/>`}`)), { bottom: lb, mar: CELL_PAD }) + `</w:tr>`; });
+      ct += `</w:tbl>`;
+      tbl += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(COLS[CI.nr].w, para(""), { bottom: last ? "thick" : "thin" })}${cell(sw, ct + `<w:p><w:pPr><w:spacing w:before="0" w:after="80"/></w:pPr></w:p>`, { span: COLS.length - 1, bottom: last ? "thick" : "thin" })}</w:tr>`;
+    }
+  });
   tbl += `</w:tbl>`;
   out += tbl;
   });
   body += out;
+  if (!body) body = styled("Heading1", run(R.name)) + info() + styled("Normal", run("Inga objekt än."));
 
   const m = tw(12);
   const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
     `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">`+
-    `<w:body>${body}${para("")}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="${m}" w:right="${m}" w:bottom="${m}" w:left="${m}" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
-  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="21"/><w:lang w:val="sv-SE"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults></w:styles>`;
-  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;
+    `<w:body>${body}${para("")}<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="${m}" w:right="${m}" w:bottom="${tw(16)}" w:left="${m}" w:header="0" w:footer="${tw(6)}" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  // footer: assignment number • name | page, right-aligned in bold 8 pt
+  const footer = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`+
+    `<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="0" w:after="0"/></w:pPr>${run(footText(R) + "  |  ", `<w:b/><w:sz w:val="16"/>`)}`+
+    `<w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
+  const red = RS.red.slice(1);
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+
+    `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:sz w:val="20"/><w:szCs w:val="20"/><w:lang w:val="sv-SE"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>`+
+    `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:sz w:val="20"/></w:rPr></w:style>`+
+    `<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:keepNext/><w:pBdr><w:top w:val="single" w:sz="12" w:space="1" w:color="${red}"/><w:bottom w:val="single" w:sz="12" w:space="1" w:color="${red}"/></w:pBdr><w:suppressAutoHyphens/><w:spacing w:before="0" w:after="160" w:line="240" w:lineRule="auto"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="44"/><w:szCs w:val="44"/></w:rPr></w:style>`+
+    `<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:style>`+
+    `<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="caption"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="120" w:after="40" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:style>`+
+    `</w:styles>`;
+  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>`;
   const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
-  const drels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${media.map(x=>`<Relationship Id="${x.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${x.file}"/>`).join("")}</Relationships>`;
+  const drels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>${media.map(x=>`<Relationship Id="${x.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${x.file}"/>`).join("")}</Relationships>`;
   return zipStore([
     { name:"[Content_Types].xml", data: enc.encode(ct) },
     { name:"_rels/.rels", data: enc.encode(rels) },
     { name:"word/document.xml", data: enc.encode(doc) },
     { name:"word/styles.xml", data: enc.encode(styles) },
+    { name:"word/footer1.xml", data: enc.encode(footer) },
     { name:"word/_rels/document.xml.rels", data: enc.encode(drels) },
     ...media.map(x => ({ name: "word/media/" + x.file, data: x.data })),
   ]);
@@ -1797,17 +2175,20 @@ function makeXlsx(p){
   const cellStr = (ref, v, st) => `<c r="${ref}" t="inlineStr"${st?` s="${st}"`:""}><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
   const cellNum = (ref, v, st) => `<c r="${ref}"${st?` s="${st}"`:""}><v>${v}</v></c>`;
   const o = expOpt(p); if (!o.cat) useCats(null);
-  const items = pts.flatMap(pt => places(pt).map(pl => ({ pt, pl })));
+  const items = pts.flatMap(pt => places(pt).map(pl => ({ pt, pl }))).sort((a, b) => (isNote(a.pt) - isNote(b.pt))); // notes last
   const XC = [ // [header, width, cell(ref, item)]
     ["Nr", 7, (r, { pt, pl }) => pl.k < 0 ? cellNum(r, pt.n, 2) : cellStr(r, pl.label, 2)],
     o.prio ? ["Prio", 7, (r, { pt }) => pt.prio ? cellNum(r, pt.prio, 2) : cellStr(r, "")] : null,
     ["Våningsplan", 16, (r, { pt }) => cellStr(r, pt.floorName)],
     o.cat ? ["Kategori", 18, (r, { pt }) => cellStr(r, catName(pt))] : null,
     ["Beskrivning", 60, (r, { pt }) => cellStr(r, pt.desc || "", 5)],
+    o.chk && p.floors.some(f => (f.points||[]).some(typeOf)) ? ["Objektstyp", 12, (r, { pt, pl }) => cellStr(r, pl.k < 0 && typeOf(pt) ? typeOf(pt).name : "")] : null,
+    o.chk && p.floors.some(f => (f.points||[]).some(typeOf)) ? ["Ej godkända krav (" + BFS + ")", 50, (r, { pt, pl }) => { const t = pl.k < 0 && typeOf(pt);
+      return cellStr(r, t ? t.items.filter(it => checkAt(pt, it.i) === "f").map(it => it.short + " (" + it.ref + ")").join("; ") : "", 5); }] : null,
     ["Antal foton", 12, (r, { pl }) => cellNum(r, pl.photos.length)],
     ["Underpunkt till", 12, (r, { pt, pl }) => pl.k < 0 ? cellStr(r, "") : cellNum(r, pt.n)],
-    ["Läge X (%)", 12, (r, { pl }) => cellNum(r, Math.round(pl.x*1000)/10)],
-    ["Läge Y (%)", 12, (r, { pl }) => cellNum(r, Math.round(pl.y*1000)/10)],
+    p.floors.some(f => f.drawing) ? ["Läge X (%)", 12, (r, { pl }) => placed(pl) ? cellNum(r, Math.round(pl.x*1000)/10) : cellStr(r, "")] : null,
+    p.floors.some(f => f.drawing) ? ["Läge Y (%)", 12, (r, { pl }) => placed(pl) ? cellNum(r, Math.round(pl.y*1000)/10) : cellStr(r, "")] : null,
   ].filter(Boolean);
   const lastCol = col(XC.length - 1);
   let rows = `<row r="1">${cellStr("A1", p.name, 3)}</row>`;
@@ -1819,6 +2200,16 @@ function makeXlsx(p){
     `<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`+
     `<cols>${XC.map((c,i) => `<col min="${i+1}" max="${i+1}" width="${c[1]}" customWidth="1"/>`).join("")}</cols>`+
     `<sheetData>${rows}</sheetData>${pts.length ? `<autoFilter ref="A4:${lastCol}${last}"/>` : ""}</worksheet>`;
+  // second sheet: every requirement of every typed object
+  const typed = o.chk ? pts.filter(typeOf) : [];
+  let rows2 = `<row r="1">${cellStr("A1", "Kontroll mot " + BFS + " – " + p.name, 3)}</row><row r="3">${["Nr","Våningsplan","Objektstyp","Beskrivning","Krav","Hänvisning","Bedömning"].map((t, i) => cellStr(col(i) + "3", t, 1)).join("")}</row>`;
+  let r2 = 4;
+  for (const pt of typed) for (const it of typeOf(pt).items) { const c = checkAt(pt, it.i);
+    rows2 += `<row r="${r2}">${cellNum("A" + r2, pt.n, 2)}${cellStr("B" + r2, pt.floorName)}${cellStr("C" + r2, typeOf(pt).name)}${cellStr("D" + r2, pt.desc || "", 5)}${cellStr("E" + r2, it.text, 5)}${cellStr("F" + r2, BFS + " " + it.ref)}${cellStr("G" + r2, c ? CHECK[c].label : "Ej bedömd")}</row>`; r2++; }
+  const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`+
+    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`+
+    `<cols>${[7,16,12,40,70,22,18].map((w,i) => `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")}</cols>`+
+    `<sheetData>${rows2}</sheetData>${typed.length ? `<autoFilter ref="A3:G${r2-1}"/>` : ""}</worksheet>`;
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`+
     `<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><sz val="10"/><color rgb="FF6E6E6E"/><name val="Calibri"/></font></fonts>`+
     `<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1D2321"/><bgColor indexed="64"/></patternFill></fill></fills>`+
@@ -1831,10 +2222,10 @@ function makeXlsx(p){
     `<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>`+
     `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>`+
     `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
-  const wb = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Brister" sheetId="1" r:id="rId1"/></sheets>${pts.length ? `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Brister!$A$4:$${lastCol}$${last}</definedName></definedNames>` : ""}</workbook>`;
-  const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+  const wb = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Brister" sheetId="1" r:id="rId1"/>${typed.length ? `<sheet name="Kontroll BFS 2024-7" sheetId="2" r:id="rId3"/>` : ""}</sheets>${pts.length ? `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Brister!$A$4:$${lastCol}$${last}</definedName>${typed.length ? `<definedName name="_xlnm._FilterDatabase" localSheetId="1" hidden="1">'Kontroll BFS 2024-7'!$A$3:$G$${r2-1}</definedName>` : ""}</definedNames>` : ""}</workbook>`;
+  const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${typed.length ? `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>` : ""}</Relationships>`;
   const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
-  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>${typed.length ? `<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` : ""}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
   return zipStore([
     { name:"[Content_Types].xml", data: enc.encode(ct) },
     { name:"_rels/.rels", data: enc.encode(rels) },
@@ -1842,6 +2233,7 @@ function makeXlsx(p){
     { name:"xl/_rels/workbook.xml.rels", data: enc.encode(wbRels) },
     { name:"xl/styles.xml", data: enc.encode(styles) },
     { name:"xl/worksheets/sheet1.xml", data: enc.encode(sheet) },
+    ...(typed.length ? [{ name:"xl/worksheets/sheet2.xml", data: enc.encode(sheet2) }] : []),
   ], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 }
 
@@ -1852,35 +2244,58 @@ async function exportReport(kind){
   const label = { pdf:"PDF", docx:"Word-fil", xlsx:"Excel-fil" }[kind];
   const done = busy("Skapar " + label + "…");
   try {
-    let blob; try { blob = kind === "xlsx" ? makeXlsx(p) : await (async R => kind === "pdf" ? makePdf(R) : makeDocx(R))(await buildReport(p)); }
-    finally { useCats(cur()); setCols(true); }
+    let files, sizeNote = null;
+    try {
+      if (kind === "xlsx") files = [{ blob: makeXlsx(p), filename: fileBase(p) + ".xlsx", mime: MIME.xlsx }];
+      else {
+        const R = await buildReport(p);
+        const wordAlone = kind === "docx" && !window.PDFLib; // PDF tool missing: keep the drawings in Word
+        const main = () => kind === "pdf" ? makePdf(R) : makeDocx(R, wordAlone ? {} : { overview: false });
+        // photo quality: as good as possible while the file stays under 20 MB
+        let li = await choosePhotoLevel(R, wordAlone ? "pdf" : kind);
+        done.set("Skapar " + label + "… (foton)"); await encodePhotos(R, li);
+        let blob = await main();
+        while (blob.size > MAX_EXPORT && li < PHOTO_LEVELS.length - 1) { li++; done.set("Anpassar fotona för att hålla filen under 20 MB…"); await encodePhotos(R, li); blob = await main(); }
+        sizeNote = blob.size > MAX_EXPORT ? "Filen är större än 20 MB trots att fotona komprimerats så mycket som möjligt utan att detaljer går förlorade."
+          : li > 3 ? "Fotona har komprimerats något för att filen ska hålla sig under 20 MB." : null;
+        if (kind === "pdf") files = [{ blob, filename: fileBase(p) + ".pdf", mime: MIME.pdf }];
+        else if (!wordAlone && (R.overviews.length || (R.noteOverviews || []).length)) files = [{ blob, filename: fileBase(p) + ".docx", mime: MIME.docx },
+                   { blob: await makePdf(R, { tables: false }), filename: fileBase(p) + " översiktsritning.pdf", mime: MIME.pdf }];
+        else files = [{ blob, filename: fileBase(p) + ".docx", mime: MIME.docx }];
+      }
+    } finally { useCats(cur()); setCols(true); }
     done();
-    openSheet({ type:"ready", kind, blob, filename: fileBase(p) + "." + kind });
+    openSheet({ type:"ready", kind, files, sizeNote, label: files.length > 1 ? "Word och PDF" : null });
   } catch(e){ done(); toast("Kunde inte exportera: " + (e.code || e.message || "okänt fel")); }
 }
 const MIME = { pdf:"application/pdf", docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
 // The finished file: mail it (the phone's share sheet with the file attached) or save it
 function readySheet(cfg){
-  const p = cur(); const label = { pdf:"PDF", docx:"Word-fil", xlsx:"Excel-fil" }[cfg.kind];
-  const file = new File([cfg.blob], cfg.filename, { type: MIME[cfg.kind] });
-  const canMail = IS_APP && navigator.canShare && (() => { try { return navigator.canShare({ files:[file] }); } catch(e) { return false; } })();
-  const subject = "Inventering – " + p.name + (p.info && p.info.nr ? " (" + p.info.nr + ")" : "");
-  const body = "Hej,\n\nBifogat finns inventeringsprotokollet för " + p.name + (infoLine(p.info) ? " (" + infoLine(p.info) + ")" : "") + ".\n\nMed vänliga hälsningar\n" + ((p.info && p.info.inspector) || "");
-  const size = cfg.blob.size > 1048576 ? (cfg.blob.size/1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(cfg.blob.size/1024)) + " kB";
+  const p = cur() || { name: "", info: {} }; const label = cfg.label || { pdf:"PDF", docx:"Word-fil", xlsx:"Excel-fil" }[cfg.kind];
+  const list = (cfg.files || [{ blob: cfg.blob, filename: cfg.filename, mime: cfg.mime }]).map(x => new File([x.blob], x.filename, { type: x.mime || MIME[cfg.kind] }));
+  const many = list.length > 1;
+  const canMail = IS_APP && navigator.canShare && (() => { try { return navigator.canShare({ files: list }); } catch(e) { return false; } })();
+  const subject = cfg.subject || "Inventering – " + p.name + (p.info && p.info.nr ? " (" + p.info.nr + ")" : "");
+  const body = cfg.body || "Hej,\n\nBifogat finns inventeringsprotokollet för " + p.name + (infoLine(p.info) ? " (" + infoLine(p.info) + ")" : "") + ".\n\nMed vänliga hälsningar\n" + ((p.info && p.info.inspector) || "");
+  const bytes = list.reduce((a, f) => a + f.size, 0);
+  const size = bytes > 1048576 ? (bytes/1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(bytes/1024)) + " kB";
   const mail = async () => {
-    try { await navigator.share({ files:[file], title: subject, text: body }); dropSheet(); toast("Skickat vidare"); }
+    try { await navigator.share({ files: list, title: subject, text: body }); dropSheet(); toast("Skickat vidare"); }
     catch(e) { if (e && e.name === "AbortError") return; toast("Delningen gick inte att öppna. Spara filen och bifoga den i mejlet."); }
   };
   const save = async () => {
-    try { await downloads.save({ filename: cfg.filename, data: file }); dropSheet(); toast(label + (cfg.kind === "pdf" ? ":en" : "en") + " är sparad"); }
+    try { for (const [i, f] of list.entries()) { if (i) await new Promise(r => setTimeout(r, 400)); await downloads.save({ filename: f.name, data: f }); }
+      dropSheet(); toast(cfg.savedMsg || (many ? "Filerna är sparade" : label + (cfg.kind === "pdf" ? ":en" : "en") + " är sparad")); }
     catch(e) { if (e && e.code === "declined") return; toast("Kunde inte spara: " + (e.code || e.message || "okänt fel")); }
   };
   return h("div",{style:"display:grid;gap:14px"},
     h("div",{class:"shead"}, h("h2",{}, label + " klar"), h("span",{class:"count"}, size)),
-    h("p",{class:"fname"}, cfg.filename),
+    ...list.map(f => h("p",{class:"fname"}, f.name)),
+    cfg.sizeNote ? h("p",{class:"note",style:"margin:0"}, cfg.sizeNote) : null,
+    many ? h("p",{class:"muted",style:"margin:-4px 0 0;line-height:1.4"},"Tabellen kommer som Word-fil och översiktsritningarna som PDF, så att ritningarna behåller full skärpa.") : null,
     canMail ? h("button",{class:"btn primary",onclick:mail},"Maila / dela") : null,
-    canMail ? h("p",{class:"muted",style:"margin:-6px 0 0;line-height:1.4"},"Välj e-postappen i listan. Filen bifogas och ämne och hälsning fylls i, du skriver bara in mottagaren.") : null,
-    h("button",{class:"btn " + (canMail ? "ghost" : "primary"),onclick:save}, IS_APP ? "Spara på telefonen" : "Spara fil"),
+    canMail ? h("p",{class:"muted",style:"margin:-6px 0 0;line-height:1.4"},(many ? "Välj e-postappen i listan. Båda filerna bifogas" : "Välj e-postappen i listan. Filen bifogas") + " och ämne och hälsning fylls i, du skriver bara in mottagaren.") : null,
+    h("button",{class:"btn " + (canMail ? "ghost" : "primary"),onclick:save}, IS_APP ? "Spara på telefonen" : (many ? "Spara filerna" : "Spara fil")),
     !IS_APP ? h("p",{class:"muted",style:"margin:-6px 0 0;line-height:1.4"},"Här inne i Claude kan filen bara sparas. Bifoga den sedan i ett mejl, eller använd appversionen för att maila direkt.") : null,
     h("button",{class:"btn ghost",onclick:closeSheet},"Stäng"));
 }
@@ -1888,7 +2303,8 @@ function exportSheet(){
   const p = cur(); const n = ptCount(p);
   return h("div",{style:"display:grid;gap:14px"},
     h("div",{class:"shead"}, h("h2",{},"Exportera"), h("span",{class:"count"}, pk(n))),
-    h("p",{style:"margin:0;color:var(--muted);line-height:1.4"}, "PDF och Word: översikt per våningsplan och en tabell med Nr., beskrivning, läge och foton. Excel: en sorterbar lista med nummer, våningsplan, kategori och beskrivning."),
+    h("p",{style:"margin:0;color:var(--muted);line-height:1.4"}, !p.floors.some(f => f.drawing) ? "PDF: en tabell med Nr., beskrivning och foton. Word: samma tabell som redigerbar Word-fil. Excel: en sorterbar lista med nummer, våningsplan, kategori och beskrivning." : "PDF: översikt per våningsplan och en tabell med Nr., beskrivning, läge och foton. Word: tabellen som Word-fil och översiktsritningarna som en separat PDF. Excel: en sorterbar lista med nummer, våningsplan, kategori och beskrivning."),
+    expOpt(p).chk && allPts(p).some(typeOf) ? h("p",{class:"note",style:"margin:0"}, "Objekt med objektstyp får sina kontrollpunkter i en egen rad direkt under punkten i PDF och Word, och ett eget blad i Excel.") : null,
     h("div",{class:"exgrid"},
       h("button",{class:"btn primary",onclick:()=>exportReport("pdf")},"PDF", h("small",{},"Protokoll")),
       h("button",{class:"btn primary",onclick:()=>exportReport("docx")},"Word", h("small",{},"Redigerbart")),
@@ -1918,16 +2334,19 @@ async function backupProjects(list, label){
         const points = [];
         for (const pt of f.points||[]) { const photos = []; for (const ph of pt.photos) photos.push({ data: await imgToData(ph) });
           const extra = []; for (const e of pt.extra) { const ep = []; for (const ph of e.photos) ep.push({ data: await imgToData(ph) }); extra.push({ x: e.x, y: e.y, photos: ep }); }
-          points.push({ n: pt.n, x: pt.x, y: pt.y, extra, cat: pt.cat || null, prio: pt.prio || null, desc: pt.desc || "", t: pt.t || null, photos }); }
-        floors.push({ name: f.name, drawing: { data: await imgToData(f.drawing), w: f.drawing.w, h: f.drawing.h, ...(f.drawing.pdf ? { pdf: await imgToData(f.drawing.pdf), page: f.drawing.page || 1 } : {}) }, points });
+          points.push({ n: pt.n, x: pt.x, y: pt.y, extra, cat: pt.cat || null, prio: pt.prio || null, desc: pt.desc || "", t: pt.t || null, photos, ...(pt.type ? { type: pt.type, checks: pt.checks || "" } : {}) }); }
+        floors.push({ name: f.name, drawing: f.drawing ? { data: await imgToData(f.drawing), w: f.drawing.w, h: f.drawing.h, ...(f.drawing.pdf ? { pdf: await imgToData(f.drawing.pdf), page: f.drawing.page || 1 } : {}) } : null, points });
       }
       out.push({ name: p.name, info: p.info || {}, exp: p.exp || {}, created: p.created, updated: p.updated, cats: p.cats || [], floors });
     }
     const json = JSON.stringify({ app: "ritningsprotokoll", version: 1, exported: new Date().toISOString(), projects: out });
     done();
     const fname = (label.replace(/[^\wåäöÅÄÖ\- ]+/g,"").trim() || "projekt") + " säkerhetskopia " + new Date().toLocaleDateString("sv-SE") + ".json";
-    await downloads.save({ filename: fname, data: new Blob([json], { type: "application/json" }) });
-    toast("Säkerhetskopian är klar");
+    // same choice as for exports: save the file, or mail/share it
+    openSheet({ type:"ready", kind:"json", blob: new Blob([json], { type: "application/json" }), filename: fname, mime: "application/json",
+      label: "Säkerhetskopia", savedMsg: "Säkerhetskopian är sparad",
+      subject: "Säkerhetskopia – " + label + " " + new Date().toLocaleDateString("sv-SE"),
+      body: "Säkerhetskopia från BRS - Inventeringsapp (" + list.map(p => p.name).join(", ") + ").\nLäs in den i appen med Läs in säkerhetskopia på startsidan." });
   } catch(e){ done(); if (e && e.code === "declined") return; toast("Kunde inte göra säkerhetskopia: " + (e.code || e.message || "okänt fel")); }
 }
 $("#backupInput").addEventListener("change", async e => {
@@ -1943,12 +2362,13 @@ $("#backupInput").addEventListener("change", async e => {
       const tick = () => done.set("Läser in " + p.name + " (" + (++k) + " av " + total + ")…");
       const floors = [];
       for (const f of p.floors) {
-        tick(); const drawing = { ...(await store.putImage(dataToBlob(f.drawing.data))), w: f.drawing.w, h: f.drawing.h };
-        if (f.drawing.pdf) { drawing.pdf = await store.putImage(dataToBlob(f.drawing.pdf)); drawing.page = f.drawing.page || 1; }
+        tick(); const drawing = f.drawing && f.drawing.data ? { ...(await store.putImage(dataToBlob(f.drawing.data))), w: f.drawing.w, h: f.drawing.h } : null;
+        if (drawing && f.drawing.pdf) { drawing.pdf = await store.putImage(dataToBlob(f.drawing.pdf)); drawing.page = f.drawing.page || 1; }
         const points = [];
         for (const pt of f.points) { const photos = []; for (const ph of pt.photos) { tick(); photos.push(await store.putImage(dataToBlob(ph.data))); }
           const extra = []; for (const e of (pt.extra||[])) { const ep = []; for (const ph of (e.photos||[])) { tick(); ep.push(await store.putImage(dataToBlob(ph.data))); } extra.push({ x: e.x, y: e.y, photos: ep }); }
-          points.push({ n: pt.n, x: pt.x, y: pt.y, extra, cat: pt.cat || null, prio: [1,2,3].includes(pt.prio) ? pt.prio : null, desc: pt.desc || "", t: pt.t || Date.now(), photos }); }
+          points.push({ n: pt.n, x: pt.x, y: pt.y, extra, cat: pt.cat || null, prio: [1,2,3].includes(pt.prio) ? pt.prio : null, desc: pt.desc || "", t: pt.t || Date.now(), photos,
+            ...(OBJ_TYPES.some(t => t.id === pt.type) ? { type: pt.type, checks: String(pt.checks || "").replace(/[^ofn-]/g, "") } : {}) }); }
         floors.push({ id: uid(), name: f.name, drawing, points });
       }
       const taken = new Set(S.projects.map(x => x.name));
