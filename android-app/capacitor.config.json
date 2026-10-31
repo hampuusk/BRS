@@ -1,0 +1,7 @@
+{
+  "appId": "se.planpin.app",
+  "appName": "PlanPin",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false }
+}
