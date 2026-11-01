@@ -1,7 +1,7 @@
 // Offline support and network rules. Everything comes from the app's own address.
 // The network is only used during the first 2 minutes after the app is opened, to look for a new version.
 // After that every request is answered from the saved copy, and nothing at all goes out until the app is opened again.
-const CACHE = "ritningsprotokoll-v1.3";
+const CACHE = "ritningsprotokoll-v1.3.1";
 const CORE = ["./", "CGATS001Compat-v2-micro.icc", "FoxitDingbats.pfb", "FoxitFixed.pfb", "FoxitFixedBold.pfb", "FoxitFixedBoldItalic.pfb", "FoxitFixedItalic.pfb", "FoxitSerif.pfb", "FoxitSerifBold.pfb", "FoxitSerifBoldItalic.pfb", "FoxitSerifItalic.pfb", "FoxitSymbol.pfb", "LiberationSans-Bold.ttf", "LiberationSans-BoldItalic.ttf", "LiberationSans-Italic.ttf", "LiberationSans-Regular.ttf", "app.js", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "index.html", "integritet.html", "jbig2.wasm", "jbig2_nowasm_fallback.js", "manifest.webmanifest", "openjpeg.wasm", "openjpeg_nowasm_fallback.js", "pdf-init.mjs", "pdf-lib.min.js", "pdf.min.mjs", "pdf.worker.min.mjs", "qcms_bg.wasm", "quickjs-eval.js", "quickjs-eval.wasm"];
 const WINDOW = 120 * 1000;
 let opened = 0;                                   // when the app was opened (its page loaded); not kept if the browser restarts this worker

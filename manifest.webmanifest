@@ -1,7 +1,7 @@
 {
   "name": "PlanPin",
   "short_name": "PlanPin",
-  "description": "Numrerade punkter på ritningar med foto och beskrivning.",
+  "description": "Numrerade objekt på ritningar med foto och beskrivning.",
   "lang": "sv",
   "start_url": "./",
   "scope": "./",
