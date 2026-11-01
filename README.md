@@ -1,77 +1,61 @@
-# PlanPin V1.2
+# PlanPin
 
-PlanPin finns i två varianter som byggs från samma kod:
+**Numrerade punkter på ritningar, med foton och beskrivning, och ett färdigt protokoll i PDF, Word eller Excel.**
 
-- **Webbappen** körs från GitHub Pages och uppdaterar sig själv som tidigare.
-- **Android-appen (APK)** byggs automatiskt av GitHub varje gång du laddar upp. Den har egen lagring på telefonen och saknar helt behörighet att använda internet.
+PlanPin är gjord för besiktningar, inventeringar och kontroller på plats. Du öppnar ritningen i telefonen, trycker där något ska noteras, tar ett foto och skriver vad det gäller. När du är klar exporterar du protokollet direkt från telefonen.
 
-## Ladda upp till GitHub
+<p>
+  <img src="docs/bild-start.png" width="200" alt="Startsidan med uppdragen">
+  <img src="docs/bild-ritning.png" width="200" alt="Ritning med numrerade punkter och punktlistan">
+  <img src="docs/bild-punkt.png" width="200" alt="En punkt med foto, kategori och beskrivning">
+  <img src="docs/bild-export.png" width="200" alt="Exportera med det som saknas överst">
+</p>
 
-1. Packa upp `planpin-v1.2-github.zip`.
-2. Ersätt allt i repot med innehållet, inklusive mapparna `android-app` och `.github`.
-3. Ta bort filerna `fonts.css`, `IBMPlexMono-Regular.ttf` och `IBMPlexMono-Bold.ttf` från repot. De används inte längre.
-4. Webbappen uppdaterar sig själv nästa gång den öppnas, inom de 2 minuter den letar efter uppdateringar.
+## Funktioner
 
-Mappen `.github` kan vara dold i Utforskaren eller Finder, och då följer den inte alltid med vid dra-och-släpp. Om den saknas på GitHub efter uppladdningen gör du så här:
+**Uppdrag och ritningar**
+- Tre typer av uppdrag: **Inventering** (med prioritering), **Utförandekontroll** (objekttyper med kontrollpunkter enligt BFS 2024:7) och **Anteckningar** (utan ritning).
+- Ritningar som PDF eller bild. En PDF med flera sidor kan läggas in som ett plan per sida.
+- Flera plan i samma uppdrag, med flikar som visar antalet punkter på varje plan.
+- Sortering av uppdragen efter senast använda, datum, namn eller typ.
 
-1. Klicka på **Add file → Create new file**.
-2. Skriv filnamnet `.github/workflows/android-apk.yml`.
-3. Klistra in innehållet från filen med samma namn i zip-filen.
-4. Spara.
+**Punkter**
+- Tryck på ritningen för att sätta en punkt. Punkterna numreras automatiskt och får nya nummer om någon raderas.
+- Underpunkter, till exempel 4.1, 4.2 och 4.3.
+- Håll inne en punkt och dra för att flytta den. Ett förstoringsglas visar exakt var den hamnar.
+- Foton från kameran eller bildalbumet, med markering direkt i fotot: pil, ring och penna i rött, och vridning.
+- Beskrivning med snabbtexter och förslag från tidigare punkter.
+- Egna kategorier med färger, och prioritet 1–3.
+- **Lägesbild:** ett utsnitt av ritningen runt punkten följer med i protokollet.
 
-## Android-appen första gången
+**Punktlistan**
+- Visas bredvid ritningen. Svep in från högerkanten för att öppna den.
+- Sök på nummer eller text och filtrera på kategori, på ett plan eller alla.
+- Välj flera punkter för att byta kategori eller prioritet, eller radera dem samtidigt.
 
-### 1. Lägg in signeringsnyckeln
+**Ritverktyg**
+- Rita väggar, dörrar och fönster, sudda bort det som inte stämmer och mät längder.
+- Ange skala, eller kalibrera mot en känd längd, så visas måtten i meter.
+- Ångra ett steg i taget.
+- Ändringarna kan visas i blått i protokollet.
 
-Det här görs en gång. Nyckeln ligger i den separata filen `planpin-signering-HEMLIG.zip`. Ladda aldrig upp den filen till repot.
+**Export**
+- **PDF:** översiktsritning per plan och en tabell med nummer, beskrivning, lägesbild och foton.
+- **Word:** samma tabell som redigerbar fil, med översiktsritningarna som separat PDF.
+- **Excel:** en sorterbar lista, och för utförandekontroller ett eget blad med alla kontrollpunkter.
+- Innan du exporterar visas det som saknas, till exempel punkter utan foto eller beskrivning. Du kan fylla i det eller exportera direkt.
 
-1. Gå till repot på GitHub och öppna **Settings → Secrets and variables → Actions**.
-2. Klicka på **New repository secret** och lägg in de fyra värdena från `LAS-MIG-HEMLIG.txt`:
-   - `PLANPIN_KEYSTORE_B64` är hela innehållet i `planpin.jks.base64.txt`, en enda lång rad.
-   - `PLANPIN_KEYSTORE_PASSWORD`
-   - `PLANPIN_KEY_ALIAS`
-   - `PLANPIN_KEY_PASSWORD`
-3. Spara nyckelmappen på ett säkert ställe. Utan den går appen inte att uppdatera. Du skulle då behöva avinstallera den, och då försvinner projekten i den.
+**Säkerhet och integritet**
+- Allt sparas bara på telefonen. Ingenting laddas upp och ingenting skickas någonstans.
+- Lås med PIN-kod eller lösenord. Allt som sparas krypteras då (AES-256), och appen låses efter 30 minuter utan aktivitet.
+- Säkerhetskopior krypteras med ett lösenord du väljer och kan läsas in på en annan telefon.
+- Android-appen saknar helt behörighet att använda internet.
 
-### 2. Hämta APK-filen
+**Övrigt**
+- Ljust och mörkt läge. Animeringar och tips kan stängas av.
+- Fungerar utan uppkoppling när den väl är öppnad.
 
-1. Gå till fliken **Actions** i repot och öppna den senaste körningen av **Android-app (APK)**. Om ingen körning finns väljer du arbetsflödet och klickar på **Run workflow**.
-2. När körningen är klar, efter cirka 5–10 minuter, laddar du ned **PlanPin-android-app** under **Artifacts**. Den syns bara när du är inloggad.
-3. Packa upp den. Inuti ligger `PlanPin-1.2.apk`.
+## Kom igång
 
-### 3. Installera på telefonen
-
-1. Flytta APK-filen till telefonen och öppna den.
-2. Tillåt installation från den källan om telefonen frågar.
-3. Flytta dina projekt:
-   1. Gör en säkerhetskopia i webbappen.
-   2. Öppna PlanPin-appen.
-   3. Välj **Läs in säkerhetskopia** på startsidan.
-
-### Senare uppdateringar
-
-Ladda upp som vanligt. Hämta sedan den nya APK-filen från Actions och installera den ovanpå den gamla. Projekten ligger kvar.
-
-### Skillnader i Android-appen
-
-- Exporter och säkerhetskopior sparas i **Dokument/PlanPin**. Kamerafoton kopieras till **Bilder/PlanPin**.
-- **Maila / dela** öppnar Androids delningsmeny.
-- Appen har ingen internetbehörighet och ingen säkerhetskopiering till Googles moln. Inget kan lämna telefonen utom det du själv delar.
-
-## Mappar och filer
-
-| Var | Vad |
-|---|---|
-| Toppmappen | Webbappen: `index.html`, `app.js`, `sw.js`, `manifest.webmanifest`, ikonerna, PDF-läsaren (`pdf.min.mjs`, `pdf.worker.min.mjs`, `pdf-init.mjs`) med hjälpfiler (`*.pfb`, `*.ttf`, `*.wasm`, `*.icc`) och PDF-verktyget `pdf-lib.min.js`. Licenserna ligger i `LICENSE*`. |
-| `android-app/` | Det som behövs för Android-appen: Capacitor-inställningar, ikoner och två små skript som anpassar projektet. |
-| `.github/workflows/android-apk.yml` | Bygger, signerar och kontrollerar APK-filen hos GitHub. |
-
-## Köra webbappen lokalt
-
-Appen behöver öppnas via en webbadress, inte genom att dubbelklicka på `index.html`. Skriv i toppmappen:
-
-```
-python -m http.server 8000
-```
-
-Öppna sedan `http://localhost:8000` i webbläsaren.
+- **Webbappen** öppnas från repots GitHub Pages-adress. Lägg den på hemskärmen så fungerar den som en vanlig app, även utan uppkoppling.
+- **Android-appen** finns under [Releases](../../releases/latest). Den går också att ladda ner från webbappen under **Inställningar → Ladda ner Android-appen**.

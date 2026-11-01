@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>PlanPin – integritet och behörigheter</title>
+<style>
+:root{--ink:#1d2321;--muted:#5f6a66;--paper:#f6f7f5;--tag:#c2410c;--line:#d9dedb}
+@media (prefers-color-scheme:dark){:root{--ink:#e8ece9;--muted:#9aa5a0;--paper:#141716;--tag:#ff7a33;--line:#323836}}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:680px;margin:0 auto;padding:32px 20px 48px}
+h1{font-size:28px;margin:0 0 4px} h1 span{color:var(--tag)} h2{font-size:18px;margin:28px 0 6px}
+p,li{color:var(--muted)} .lead{color:var(--ink);font-size:17px} footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
+</style>
+</head>
+<body><main>
+<h1>Plan<span>Pin</span> – integritet</h1>
+<p class="lead">PlanPin är ett verktyg för att dokumentera punkter på ritningar med foton och beskrivningar. Appen är byggd så att ingen information lämnar din telefon om du inte själv väljer att dela den.</p>
+<h2>Inget samlas in</h2>
+<p>PlanPin samlar inte in, skickar eller säljer någon information om dig eller ditt arbete. Det finns inga konton, ingen statistik, ingen reklam och inga spårare. Ingen information delas med tredje part.</p>
+<h2>Allt stannar på telefonen</h2>
+<p>Uppdrag, ritningar, foton och anteckningar sparas bara i appen på din telefon. Med PIN-kod eller lösenord på krypteras de med AES-256. Inget lämnar telefonen om du inte själv sparar, delar eller mejlar en fil. Android-appens data ingår inte i telefonens automatiska säkerhetskopiering till molnet.</p>
+<h2>Inget nät</h2>
+<p>Android-appen saknar behörighet att använda internet och kan därför aldrig skicka eller hämta något. Webbversionen hämtar bara nya versioner av sig själv under 2 minuter efter start, från samma adress som appen, och använder sedan inget nät.</p>
+<h2>Behörigheter i Android</h2>
+<ul>
+<li><b>Kamera</b> – används bara när du trycker på Ta foto, för att fotografera det du dokumenterar.</li>
+<li><b>Lagring</b> – används när du sparar en export eller säkerhetskopia i Dokument/PlanPin och kopior av kamerafoton i Bilder/PlanPin. Bara Android 10 och äldre frågar om lov för detta.</li>
+</ul>
+<h2>Ta bort dina uppgifter</h2>
+<p>Radera all data i appen under Inställningar → Säkerhet och lagring, eller avinstallera appen. Filer du själv har sparat eller delat påverkas inte.</p>
+<h2>Barn</h2>
+<p>Appen riktar sig till yrkesverksamma och samlar inte in uppgifter från någon, oavsett ålder.</p>
+<footer>Senast uppdaterad 31 oktober 2026.</footer>
+</main></body>
+</html>

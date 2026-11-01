@@ -2,6 +2,17 @@
   "appId": "se.planpin.app",
   "appName": "PlanPin",
   "webDir": "www",
-  "server": { "androidScheme": "https" },
-  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false }
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native"
+    }
+  },
+  "zoomEnabled": true
 }
