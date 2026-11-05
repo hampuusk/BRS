@@ -146,8 +146,8 @@ label:focus-within {
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 8px;
-  height: 38px;
-  min-width: 38px;
+  height: 44px; /* every tap target at least 44 px */
+  min-width: 44px;
   padding: 0 10px;
   display: inline-flex;
   align-items: center;
@@ -160,6 +160,7 @@ label:focus-within {
   border: 0;
   border-radius: var(--r);
   padding: 12px 16px;
+  min-height: 44px;
   font-weight: 600;
   font-size: var(--fs-b);
   display: inline-flex;
@@ -226,9 +227,10 @@ label:focus-within {
 }
 .home .bar {
   gap: 8px;
+  flex-wrap: wrap; /* big text on a narrow phone: the button goes under the name instead of squeezing it */
 }
 .brand {
-  flex: 1;
+  flex: 1 1 auto; /* as wide as its name: with big text the button wraps under it instead of the name being cut */
   min-width: 0;
   display: flex;
   align-items: center;
@@ -267,14 +269,6 @@ label:focus-within {
 .brand h1 .acc {
   color: var(--tag);
 }
-.sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
 .lockbtn {
   padding: 0;
   width: 38px;
@@ -310,6 +304,7 @@ label:focus-within {
   background: var(--surface);
   border-radius: 999px;
   padding: 5px 12px;
+  min-height: 44px;
   font-weight: 600;
   font-size: var(--fs-s);
 }
@@ -410,9 +405,6 @@ label:focus-within {
     font-size: var(--fs-xl);
     gap: 8px;
   }
-  .newbtn {
-    padding: 9px 12px;
-  }
   .home .bar {
     gap: 6px;
   }
@@ -420,6 +412,9 @@ label:focus-within {
 .newbtn {
   gap: 0;
   white-space: pre;
+  padding: 9px 14px;
+  font-size: var(--fs-b);
+  flex: none;
 }
 @media (max-width: 300px) {
   .newbtn .long {
@@ -433,11 +428,6 @@ label:focus-within {
 }
 .lockbtn .sicon {
   background: transparent;
-}
-.newbtn {
-  padding: 9px 14px;
-  font-size: var(--fs-b);
-  flex: none;
 }
 .storinfo {
   display: grid;
@@ -554,6 +544,7 @@ label:focus-within {
 }
 .sortseg {
   display: inline-flex;
+  flex-wrap: wrap; /* big text: a choice that does not fit goes to a second row instead of being cut */
   background: var(--plan-bg);
   border-radius: 9px;
   padding: 3px;
@@ -568,7 +559,8 @@ label:focus-within {
   font-weight: 600;
   color: var(--muted);
   min-width: 44px;
-  min-height: 32px;
+  min-height: 44px;
+  white-space: nowrap;
 }
 .seg.on {
   background: var(--surface);
@@ -680,8 +672,8 @@ label:focus-within {
   font-size: var(--fs-s);
   line-height: var(--lh);
 }
-.pbody small span {
-  white-space: nowrap;
+.pbody small {
+  overflow-wrap: anywhere; /* big text on a narrow phone: the number and date wrap instead of running out of the card */
 }
 .kchip {
   font-size: var(--fs-xs);
@@ -857,7 +849,9 @@ label:focus-within {
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  font-size: var(--fs-m);
+  font-size: 14px; /* on the drawing: sized with the drawing, not with the phone's text size */
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
   color: #fff;
   background: var(--mc, var(--tag));
   min-width: 28px;
@@ -874,6 +868,26 @@ label:focus-within {
   outline: 2px dashed var(--ink);
   outline-offset: 2px;
 }
+/* between number and dot the marker glides: the badge shrinks and its number fades (scale is its own property, so
+   it never lags behind the zoom; not with Animerade övergångar off, or less motion on the phone) */
+@media (prefers-reduced-motion: no-preference) {
+  :root:not(.noanim) .mk i {
+    transition:
+      scale 0.24s ease,
+      color 0.18s ease;
+  }
+}
+/* a marker that would touch another at full size: a small dot in its group's colour (see fitMarkers), about 11 px */
+.mk:not(.dot):not(.fout) {
+  z-index: 1; /* the markers with their number lie over the dots */
+}
+.mk.dot i {
+  scale: 0.4;
+  color: transparent;
+}
+.mk.dot.long i {
+  scale: 0.33;
+}
 
 .hint {
   position: absolute;
@@ -883,7 +897,7 @@ label:focus-within {
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 14px;
   padding: 6px 14px;
   font-size: var(--fs-m);
   line-height: var(--lh);
@@ -892,23 +906,7 @@ label:focus-within {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   width: max-content;
   max-width: calc(100% - 32px); /* long texts wrap instead of being cut off */
-  border-radius: 14px;
-}
-.zoom {
-  position: absolute;
-  right: max(12px, env(safe-area-inset-right, 0px));
-  bottom: 12px;
-  display: grid;
-  gap: 6px;
-}
-.zoom button {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  font-size: var(--fs-xl);
-  font-weight: 600;
+  transition: opacity 0.4s;
 }
 .foot {
   display: flex;
@@ -945,6 +943,9 @@ label:focus-within {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid;
   gap: 14px;
+  overscroll-behavior: contain;
+  will-change: transform;
+  overflow-wrap: anywhere; /* big text: a long heading or word wraps instead of running out of the sheet */
 }
 .sheet .grab {
   width: 44px;
@@ -959,10 +960,6 @@ label:focus-within {
   content: "";
   position: absolute;
   inset: -14px -40px;
-}
-.sheet {
-  overscroll-behavior: contain;
-  will-change: transform;
 }
 .shead {
   display: flex;
@@ -1102,7 +1099,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 40px;
+  height: 44px;
   padding: 0 14px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -1143,22 +1140,34 @@ textarea {
   display: flex;
   gap: 10px;
   align-items: center;
+  min-height: 44px;
   font-weight: 600;
   cursor: pointer;
+}
+/* "Symboler visas på:" in the export sheet: one box per group (just the name), indented under the text */
+.symon {
+  display: grid;
+  gap: 0;
+}
+.symon > small {
+  font-weight: 600;
+  color: var(--muted);
+  padding-top: 6px;
+}
+.check.sub {
+  padding-left: 30px;
+}
+/* the list's filter: a thin line between the groups and the categories */
+.fsep {
+  flex: 0 0 1px;
+  align-self: stretch;
+  margin: 6px 2px;
+  background: var(--line);
 }
 .check input {
   width: 20px;
   height: 20px;
   accent-color: var(--tag);
-}
-.floor em {
-  font-style: normal;
-  font-weight: 600;
-  font-size: var(--fs-s);
-  margin-left: 2px;
-  padding-left: 9px;
-  border-left: 1px solid currentColor;
-  opacity: 0.85;
 }
 .flist {
   display: grid;
@@ -1229,11 +1238,12 @@ textarea {
 .sideclose {
   grid-row: 1/3;
   grid-column: 3;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 1px solid var(--line);
   background: var(--surface);
+  color: var(--danger);
   font-weight: 700;
 }
 .side .spacer {
@@ -1283,7 +1293,6 @@ textarea {
 }
 .sitem .stop b {
   font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
   font-size: var(--fs-l);
   color: var(--tag);
   min-width: 24px;
@@ -1339,36 +1348,16 @@ textarea {
   background: var(--surface);
   border-radius: 8px;
   padding: 7px 6px;
+  min-height: 44px;
   font-weight: 600;
   font-size: var(--fs-s);
 }
 .sbtn.danger {
   color: var(--danger);
 }
-.sidetoggle {
-  position: absolute;
-  top: 10px;
-  right: max(10px, env(safe-area-inset-right, 0px));
-  z-index: 6;
-  height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  font-weight: 600;
-  font-size: var(--fs-m);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
-}
 .vp.with-side .hint {
   left: calc((100% - min(48%, 250px)) / 2);
   max-width: calc(100% - min(48%, 250px) - 24px);
-  top: 56px;
-}
-.vp.with-side .zoom {
-  right: calc(min(48%, 250px) + 10px);
-}
-.vp:not(.with-side) .hint {
-  top: 56px;
 }
 .stage.anim {
   transition: transform 0.35s ease;
@@ -1560,13 +1549,13 @@ textarea {
 }
 .pdel {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  top: 0;
+  right: 0;
+  width: 44px; /* the same 34 px dark dot as before, in a 44 px tap area at the corner */
+  height: 44px;
   border: 0;
-  background: rgba(0, 0, 0, 0.6);
+  padding: 0;
+  background: radial-gradient(circle 17px at 50% 50%, rgba(0, 0, 0, 0.6) 16.5px, transparent 17px);
   color: #fff;
   font-weight: 700;
   font-size: var(--fs-s);
@@ -1591,6 +1580,7 @@ textarea {
   color: var(--ink);
   border-radius: 999px;
   padding: 6px 12px;
+  min-height: 44px;
   font-weight: 600;
   font-size: var(--fs-m);
   display: inline-flex;
@@ -1607,10 +1597,10 @@ textarea {
 }
 .cat.on {
   background: var(--cc);
-  color: #fff;
+  color: var(--ci, #fff);
 }
 .cat.on::before {
-  background: #fff;
+  background: var(--ci, #fff);
 }
 .cchip {
   font-size: var(--fs-xs);
@@ -1642,6 +1632,7 @@ textarea {
   background: none;
   border: 0;
   padding: 4px 0;
+  min-height: 44px;
   color: var(--tag);
   font-weight: 600;
   font-size: var(--fs-m);
@@ -1682,22 +1673,21 @@ textarea {
 .swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0;
 }
 .sw {
-  width: 30px;
-  height: 30px;
+  width: 44px; /* a 30 px dot in a 44 px tap area */
+  height: 44px;
   border-radius: 50%;
-  border: 2px solid var(--surface);
-  background: var(--cc);
-  box-shadow: 0 0 0 1px var(--line);
+  border: 7px solid transparent;
+  background: var(--cc) padding-box;
 }
 .sw.on {
-  box-shadow: 0 0 0 2px var(--ink);
+  box-shadow: inset 0 0 0 2px var(--ink);
 }
 .swcustom {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   border: 0;
   padding: 0;
   border-radius: 50%;
@@ -1841,7 +1831,7 @@ textarea {
 }
 .pbtn {
   width: 46px;
-  height: 42px;
+  height: 44px;
   border-radius: 10px;
   border: 1.5px solid var(--line);
   background: var(--surface);
@@ -2059,7 +2049,6 @@ img.tload,
 }
 .ppct {
   font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
   font-size: var(--fs-s);
   font-variant-numeric: tabular-nums;
 }
@@ -2259,7 +2248,6 @@ img.tload,
 }
 .ocard .n {
   font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: var(--fs-l);
   min-width: 30px;
@@ -2630,23 +2618,276 @@ input.pinin.pwin {
 .stage.editing .mk i {
   opacity: 0.3;
 }
+/* Drawing tools: a narrow column of symbols at the edge (left, or right by the setting "Ritverktygen"), anchored at
+   the bottom where the thumb is, and above it a box of symbols for what the chosen tool (or the chosen drawn thing)
+   can do: the box grows upwards, so the tools never move under the finger. The wrapper lets touches through to the
+   drawing around them. */
+/* one size for all the drawing view's symbols, from the screen's short side: larger on a tablet, smaller on a
+   small phone such as an iPhone mini */
+.vp {
+  --ecell: clamp(44px, 11vmin, 58px);
+  --lcell: var(--ecell);
+}
 .editbar {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
+  inset: 0;
   z-index: 7;
-  display: grid;
+  pointer-events: none;
+}
+.ecol {
+  position: absolute;
+  top: 10px;
+  left: max(8px, env(safe-area-inset-left, 0px));
+  bottom: calc(var(--lcell) + 32px); /* clear of the one button at the bottom (the tool that is out) */
+  display: flex;
+  flex-direction: column-reverse; /* the tools at the bottom, the box of choices above them */
+  align-items: flex-start;
   gap: 8px;
+  pointer-events: none;
+}
+.etools,
+.eopts {
+  pointer-events: auto;
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.eopts:empty {
+  display: none;
+}
+.etool,
+.eopt {
+  width: var(--ecell, 44px);
+  height: var(--ecell, 44px);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 10px;
+  color: var(--ink);
+  transition:
+    background-color 0.15s,
+    transform 0.15s;
+}
+.etool:active,
+.eopt:active {
+  transform: scale(0.94);
+}
+.etool.on,
+.eopt.on {
+  background: var(--tag-soft);
+  border-color: var(--tag);
+}
+.eopt:disabled {
+  opacity: 0.35;
+}
+.eopt.danger {
+  color: var(--danger);
+}
+.eopt.end {
+  color: var(--danger);
+}
+.ico {
+  width: 30px;
+  height: 30px;
+  overflow: visible;
+}
+/* the symbols follow the size of their buttons, which shrink together on a small screen */
+.etool .ico {
+  width: calc(var(--ecell, 44px) * 0.68);
+  height: calc(var(--ecell, 44px) * 0.68);
+}
+.eopt .ico {
+  width: calc(var(--ecell, 44px) * 0.6);
+  height: calc(var(--ecell, 44px) * 0.6);
+}
+/* a value rather than a symbol: the scale, and what was measured */
+.eopt.escale {
+  width: auto;
+  min-width: var(--ecell, 44px);
+  padding: 0 4px;
+  font-size: calc(var(--ecell, 44px) * 0.28);
+  font-weight: 700;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  border-color: var(--line);
+}
+/* what was measured: its own label beside the top of the box, so the box never changes size */
+.editbar .mres {
+  position: absolute;
+  top: 10px;
+  left: calc(max(8px, env(safe-area-inset-left, 0px)) + 64px);
+  padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 8px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-l);
+  font-weight: 700;
+  color: var(--danger);
+  white-space: nowrap;
+  /* always as wide as "9999,9 km", so the label does not grow or jump while measuring */
+  box-sizing: border-box;
+  width: calc(9ch + 26px);
+  text-align: center;
 }
-.etools {
+.elen {
+  display: grid;
+  justify-items: center;
+  gap: 0;
+}
+.elen input {
+  width: var(--ecell, 44px);
+  height: calc(var(--ecell, 44px) - 14px);
+  padding: 1px;
+  text-align: center;
+  font-size: calc(var(--ecell, 44px) * 0.3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+.elen small {
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--muted);
+}
+@media (max-height: 520px) {
+  /* landscape: the box sits beside the column, its symbols in columns of four */
+  .ecol {
+    top: 6px;
+    bottom: 6px;
+    flex-direction: row;
+    align-items: flex-end;
+  }
+  .editbar .mres {
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  /* while drawing, Mät and the pen move to the right edge, beside each other, so the tool column can use the
+     whole height */
+  .vp.editing .ltools {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right, 0px));
+    grid-auto-flow: column;
+  }
+  .etools {
+    gap: 2px;
+    padding: 3px;
+  }
+}
+/* the ends of the chosen drawn thing: drag one to make it longer or shorter */
+.edits .ehandle {
+  fill: #fff;
+  stroke: var(--tag);
+  stroke-width: 2.5px;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+}
+/* bottom left of the drawing (or right, by the setting): the settings, the object list, and ISO, Mät and the pen
+   that open the drawing tools; a little more room between the two groups */
+.ltools {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left, 0px));
+  bottom: 12px;
+  display: grid;
+  gap: 10px;
+}
+.ltools .sidebtn + .editbtn:not(.sidebtn) {
+  margin-top: 8px;
+}
+/* while the drawing is moved or zoomed: the margin fades so the drawing under it shows (see bindGestures) */
+.ltools,
+.ecol {
+  transition: opacity 0.18s;
+}
+.vp.panning .ltools,
+.vp.panning .ecol {
+  opacity: 0.2;
+}
+/* a short drawing area: two columns of three (see fitMargin) */
+.ltools.two {
+  grid-template-rows: repeat(3, auto);
+  grid-auto-flow: column;
+}
+.ltools.two .sidebtn + .editbtn:not(.sidebtn) {
+  margin-top: 0;
+}
+:root[data-hand="right"] .ltools.two {
+  direction: rtl;
+}
+@media (max-height: 520px) {
+  /* a phone on its side: the buttons in a row at the bottom (a column would not fit) */
+  .ltools {
+    grid-auto-flow: column;
+  }
+  .ltools .sidebtn + .editbtn:not(.sidebtn) {
+    margin-top: 0;
+    margin-left: 8px;
+  }
+}
+/* on a floor without a drawing the two settings stand in the top bar */
+.barbtns {
   display: flex;
-  gap: 5px;
+  gap: 8px;
+  margin-left: auto;
+}
+.barbtns .ico {
+  width: 26px;
+  height: 26px;
+}
+.ltools .editbtn {
+  width: calc(var(--lcell, 44px) + 4px);
+  height: calc(var(--lcell, 44px) + 4px);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+.ltools .ico {
+  width: calc(var(--lcell, 44px) * 0.62);
+  height: calc(var(--lcell, 44px) * 0.62);
+}
+.ltools .editbtn.on {
+  background: var(--tag-soft);
+  border-color: var(--tag);
+  color: var(--ink);
+}
+.ltools .editbtn:active {
+  transform: scale(0.94);
+}
+@media (max-height: 520px) {
+  .etools {
+    top: 6px;
+    gap: 2px;
+    padding: 3px;
+  }
+  .etool {
+    width: 40px;
+    height: 40px;
+  }
+  .eopts {
+    top: 6px;
+    padding: 6px;
+    left: calc(max(6px, env(safe-area-inset-left, 0px)) + 56px);
+  }
+  .eopts span {
+    display: none;
+  }
 }
 .errlog {
   margin: 0;
@@ -2668,70 +2909,6 @@ input.pinin.pwin {
   border-left: 3px solid var(--danger);
   padding-left: 10px;
   color: var(--ink);
-}
-.etool {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  border-radius: 8px;
-  padding: 10px 2px;
-  font-weight: 600;
-  font-size: var(--fs-s);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-@media (max-width: 380px) {
-  .etools {
-    gap: 3px;
-  }
-  .etool {
-    font-size: var(--fs-xs);
-    padding: 10px 0;
-    letter-spacing: -0.02em;
-  }
-}
-.etool.on {
-  background: var(--ink);
-  color: var(--surface);
-  border-color: var(--ink);
-}
-.eopts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  min-height: 32px;
-}
-.eopts span {
-  font-size: var(--fs-s);
-  color: var(--muted);
-  flex: 1 1 150px;
-  line-height: var(--lh);
-}
-.eopts b {
-  font-size: var(--fs-s);
-  flex: 1 1 100%;
-}
-.eopt {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 999px;
-  padding: 7px 12px;
-  font-weight: 600;
-  font-size: var(--fs-s);
-  min-height: 34px;
-}
-.eopt.on {
-  border-color: var(--tag);
-  color: var(--tag-deep);
-  background: var(--tag-soft);
-}
-.eopt.danger {
-  color: var(--danger);
-}
-.zoom .editbtn {
-  font-size: var(--fs-l);
 }
 .edits .lbl {
   font: 600 calc(12px * var(--inv, 1)) var(--font-num);
@@ -2759,36 +2936,45 @@ input.pinin.pwin {
   stroke-width: 1.5px;
   vector-effect: non-scaling-stroke;
 }
+/* kept measurements (shown only in Mät): solid violet, apart from the red dashed one being measured */
+.edits .smline {
+  fill: none;
+  stroke: #6a1b9a;
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.edits .smhalo {
+  fill: none;
+  stroke: rgba(255, 138, 0, 0.5);
+  stroke-width: 10px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.edits .smend {
+  fill: #6a1b9a;
+  stroke: #fff;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+.edits .smlbl {
+  fill: #6a1b9a;
+  font-weight: 700;
+  font-size: calc(13px * var(--inv, 1));
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: calc(4px * var(--inv, 1));
+  stroke-linejoin: round;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
 .edits .chaindot {
   fill: rgba(255, 138, 0, 0.35);
   stroke: #e65100;
   stroke-width: 2px;
   vector-effect: non-scaling-stroke;
-}
-.eopts .mres {
-  flex: 0 0 auto;
-  font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-b);
-  color: #b71c1c;
-}
-.elen {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-s);
-  font-weight: 600;
-}
-.elen input {
-  width: 78px;
-  padding: 6px 8px;
-  font-size: var(--fs-b);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
 }
 .field .row select {
   flex: 1;
@@ -2802,41 +2988,6 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--r);
   padding: 11px 10px;
-}
-@media (max-height: 520px) {
-  .editbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px;
-    top: 6px;
-    left: 6px;
-    right: 6px;
-  }
-  .etools {
-    flex: 0 0 auto;
-  }
-  .etool {
-    flex: 0 0 auto;
-    padding: 7px 10px;
-    font-size: var(--fs-s);
-  }
-  .eopts {
-    flex: 1;
-    min-height: 0;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-  .eopts span {
-    display: none;
-  }
-  .eopts b {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-  .eopt {
-    white-space: nowrap;
-  }
 }
 @media (prefers-reduced-motion: no-preference) {
   .sheet {
@@ -2904,9 +3055,6 @@ select {
 .shead:has(.mback) {
   display: grid;
   gap: 2px;
-}
-.hint {
-  transition: opacity 0.4s;
 }
 .hint.gone {
   opacity: 0;
@@ -2990,13 +3138,382 @@ a.btn {
   color: var(--ink);
   box-sizing: border-box;
 }
+/* Placeholder in the version inside Claude for what only the installed app can do */
+.apponly {
+  position: relative;
+  pointer-events: none;
+}
+.apponly > * {
+  opacity: 0.45;
+  filter: grayscale(0.4);
+}
+.apponly::after {
+  content: "Endast i appen";
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+/* The sorting choices on the start page: the whole width, shared equally */
+.listhead .sortseg {
+  display: flex;
+  flex: 1 1 100%;
+}
+.listhead .sortseg .seg {
+  flex: 1 1 0;
+  min-width: max-content; /* never narrower than its word: with big text the row wraps instead */
+  padding-left: 4px;
+  padding-right: 4px;
+}
+/* A setting's explanation right under it, in line with its text */
+.field small.under {
+  display: block;
+  padding-left: 30px;
+  margin: -2px 0 6px;
+  line-height: var(--lh);
+}
+/* "+ Nytt uppdrag" under the assignments: the same space above it as between the assignments */
+#newbelow {
+  display: flex; /* a block, so that it is centred with the assignments on a wide screen */
+  justify-content: center;
+  margin-top: 10px;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* Storage meter: total, a bar shared out between the biggest assignments, and a list of them */
+.smeter {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 6px;
+}
+.smhead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.smbig {
+  font-size: var(--fs-xxl);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-tight);
+}
+.smhead span {
+  color: var(--muted);
+  font-size: var(--fs-m);
+}
+.smbar {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--line);
+}
+.smbar i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+}
+.smbar i + i {
+  border-left: 1.5px solid var(--surface);
+}
+.smroom {
+  color: var(--muted);
+  font-size: var(--fs-s);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+.smlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.smlist li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  font-size: var(--fs-m);
+}
+.smlist li i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.smlist li span {
+  overflow-wrap: anywhere; /* a long name wraps instead of being cut off */
+  line-height: var(--lh-tight);
+}
+.smlist li b {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ---------- Symbolverktyget ---------- */
+.ltools .isotxt {
+  font-weight: 800;
+  font-size: var(--fs-b);
+  letter-spacing: 0.06em;
+  font-family: var(--font-ui);
+}
+/* the signs in the column, in their own colours (flat, not 3D) */
+.symico {
+  width: calc(var(--ecell, 44px) * 0.7);
+  height: calc(var(--ecell, 44px) * 0.7);
+  border-radius: 2px;
+}
+.symico.rect {
+  height: calc(var(--ecell, 44px) * 0.35);
+}
+/* the tillgänglighetsanpassad direction signs are wider (540 × 200): a little wider in the column, as high as fits */
+.symico.rect.wide {
+  width: calc(var(--ecell, 44px) * 0.8);
+  height: calc(var(--ecell, 44px) * 0.296);
+}
+/* too little room for four signs a page: slightly smaller cells in the column */
+.etools.symcol.tight {
+  --ecell: clamp(34px, 8.5vmin, 46px);
+}
+.etools.symcol .sympage {
+  height: 44px; /* a whole tap target, like the other buttons */
+}
+.etools.symcol .sympage:disabled {
+  opacity: 0.25;
+}
+.etools.symcol [hidden] {
+  display: none;
+}
+.syms .sym.sel {
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+}
+.syms .symsel,
+.notes .symsel {
+  /* the dashed frame around a chosen sign or box: never filled (a chosen box was once covered in black) */
+  fill: none;
+  stroke: var(--tag);
+  stroke-width: 2.5px;
+  stroke-dasharray: 5 3;
+  vector-effect: non-scaling-stroke;
+}
+.paperpick {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+/* The start page's status card: a green check (the app is already locked by its own sign-in, so no padlock) */
+.status .sicon {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+}
+.status .sicon::before {
+  left: 9px;
+  top: 6px;
+  width: 7px;
+  height: 12px;
+  border-radius: 0;
+  background: none;
+  border: solid var(--ok);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+.status .sicon::after {
+  display: none;
+}
+/* ---------- Förhandsvisning ---------- */
+.pvstrip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  scroll-snap-type: x proximity;
+}
+.pvcard {
+  flex: 0 0 auto;
+  width: 132px;
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--paper);
+  color: var(--ink);
+  scroll-snap-align: start;
+  text-align: left;
+}
+.pvcard img,
+.pvcard .pvimg {
+  width: 100%;
+  height: 92px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+}
+.pvcard .pvimg.doc {
+  font-size: var(--fs-xxl);
+  color: var(--muted);
+  background: var(--surface);
+}
+.pvcard small {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+.pvcard.loading .pvimg {
+  background: linear-gradient(90deg, var(--line), var(--surface), var(--line));
+  background-size: 200% 100%;
+  animation: pvshim 1.2s linear infinite;
+}
+@keyframes pvshim {
+  to {
+    background-position: -200% 0;
+  }
+}
+.pvhint {
+  line-height: var(--lh);
+}
+.pvlayer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--paper);
+}
+.pvbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top, 0px)) 12px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.pvbar b {
+  font-size: var(--fs-m);
+}
+.pvnav {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.pvnav .btn {
+  min-width: 44px;
+}
+.pvscroll {
+  overflow: auto;
+  padding: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+.pvbig {
+  display: block;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+.pvdoc {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+  color: #1d2321;
+  padding: 16px;
+  border-radius: 6px;
+  font-size: var(--fs-s);
+  line-height: var(--lh);
+}
+.pvdoc h3 {
+  font-size: var(--fs-l);
+  margin: 14px 0 6px;
+}
+.pvdoc .pvwide {
+  max-width: 100%;
+  display: block;
+  margin: 8px 0;
+}
+.pvtable {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 6px 0;
+}
+.pvtable td {
+  border-top: 1px solid #d9dedb;
+  padding: 4px 6px;
+  vertical-align: top;
+}
+.pvtable img {
+  max-width: 110px;
+  max-height: 90px;
+  display: block;
+  margin-top: 4px;
+}
+/* a short screen: the box of choices beside the column of signs, so the column gets the whole height */
+.ecol.beside {
+  flex-direction: row;
+  align-items: flex-end;
+}
+/* ISO: the column of signs fills the height a page at a time, so its box (Ångra, the sign's arrows) stays under it,
+   nearest the thumb */
+.editbar.sym .ecol:not(.beside) {
+  flex-direction: column;
+  justify-content: flex-end;
+}
+/* the setting "Ritverktygen: Höger": everything of the tools mirrored to the right edge; with the object list open
+   the buttons stand beside the list */
+:root[data-hand="right"] .ecol {
+  left: auto;
+  right: max(8px, env(safe-area-inset-right, 0px));
+  align-items: flex-end;
+}
+:root[data-hand="right"] .ecol.beside {
+  flex-direction: row-reverse;
+}
+:root[data-hand="right"] .ltools {
+  left: auto;
+  right: max(12px, env(safe-area-inset-right, 0px));
+}
+:root[data-hand="right"] .vp.with-side .ltools {
+  right: calc(min(48%, 250px) + 12px);
+}
+:root[data-hand="right"] .editbar .mres {
+  left: max(8px, env(safe-area-inset-left, 0px));
+}
+@media (max-height: 520px) {
+  :root[data-hand="right"] .ecol {
+    flex-direction: row-reverse;
+  }
+  .editbar.sym .ecol:not(.beside) {
+    flex-direction: row;
+  }
+  :root[data-hand="right"] .editbar.sym .ecol:not(.beside) {
+    flex-direction: row-reverse;
+  }
+  :root[data-hand="right"] .vp.editing .ltools {
+    right: auto;
+    left: max(12px, env(safe-area-inset-left, 0px));
+  }
+  :root[data-hand="right"] .editbar .mres {
+    left: 50%;
+  }
+}
 </style>
 
 </head>
 <body>
 <div class="app" id="app"></div>
-<input type="file" id="planInput" class="hidden-input" accept="application/pdf,image/*">
-<input type="file" id="backupInput" class="hidden-input" accept=".json,.planpin,.brs,application/json,application/octet-stream">
+<input type="file" id="planInput" class="hidden-input" tabindex="-1" aria-hidden="true" accept="application/pdf,image/*">
+<input type="file" id="backupInput" class="hidden-input" tabindex="-1" aria-hidden="true" accept=".zip,.json,.planpin,.brs,application/zip,application/json,application/octet-stream">
 
 <script src="app.js"></script>
 </body>

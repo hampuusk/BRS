@@ -1,0 +1,12 @@
+# Radslut: LF i repot och vid utcheckning, oavsett datorns Git-inställning (Windows-Git med autocrlf gör annars om
+# textfiler till CRLF). Då är webbappen, arbetsflödet och byggskripten byte för byte som de byggdes.
+* text=auto eol=lf
+*.sh text eol=lf
+# aldrig som text
+*.png -text
+*.jpg -text
+*.wasm -text
+*.ttf -text
+*.pfb -text
+*.icc -text
+*.apk -text
