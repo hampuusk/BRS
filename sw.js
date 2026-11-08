@@ -1,13 +1,13 @@
 // Offline support and network rules. Everything comes from the app's own address.
 // The network is only used during the first 2 minutes after the app is opened, to look for a new version.
 // After that every request is answered from the saved copy, and nothing at all goes out until the app is opened again.
-const CACHE = "ritningsprotokoll-v1.5";
-const CORE = ["./", "CGATS001Compat-v2-micro.icc", "FoxitDingbats.pfb", "FoxitFixed.pfb", "FoxitFixedBold.pfb", "FoxitFixedBoldItalic.pfb", "FoxitFixedItalic.pfb", "FoxitSerif.pfb", "FoxitSerifBold.pfb", "FoxitSerifBoldItalic.pfb", "FoxitSerifItalic.pfb", "FoxitSymbol.pfb", "LiberationSans-Bold.ttf", "LiberationSans-BoldItalic.ttf", "LiberationSans-Italic.ttf", "LiberationSans-Regular.ttf", "app.js", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "index.html", "integritet.html", "jbig2.wasm", "jbig2_nowasm_fallback.js", "manifest.webmanifest", "openjpeg.wasm", "openjpeg_nowasm_fallback.js", "pdf-init.mjs", "pdf-lib.min.js", "pdf.min.mjs", "pdf.worker.min.mjs", "qcms_bg.wasm", "quickjs-eval.js", "quickjs-eval.wasm"];
+const CACHE = "planpin-v1.6";
+const CORE = ["./", "CGATS001Compat-v2-micro.icc", "FoxitDingbats.pfb", "FoxitFixed.pfb", "FoxitFixedBold.pfb", "FoxitFixedBoldItalic.pfb", "FoxitFixedItalic.pfb", "FoxitSerif.pfb", "FoxitSerifBold.pfb", "FoxitSerifBoldItalic.pfb", "FoxitSerifItalic.pfb", "FoxitSymbol.pfb", "LiberationSans-Bold.ttf", "LiberationSans-BoldItalic.ttf", "LiberationSans-Italic.ttf", "LiberationSans-Regular.ttf", "app.js", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "index.html", "integritet.html", "jbig2.wasm", "jbig2_nowasm_fallback.js", "manifest.webmanifest", "openjpeg.wasm", "openjpeg_nowasm_fallback.js", "pdf-init.mjs", "pdf-lib.min.js", "pdf.min.mjs", "pdf.worker.min.mjs", "qcms_bg.wasm"];
 const WINDOW = 120 * 1000;
 let opened = 0;                                   // when the app was opened (its page loaded); not kept if the browser restarts this worker
 const netOk = () => Date.now() - opened < WINDOW;
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting())); });
-self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith("ritningsprotokoll-") && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => (k.startsWith("planpin-") || k.startsWith("ritningsprotokoll-")) && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("message", e => { if (e.data === "netstate" && e.source) e.source.postMessage({ netstate: netOk(), left: Math.max(0, WINDOW - (Date.now() - opened)) }); });
 const good = r => r && r.ok && !r.redirected && r.type === "basic"; // a real answer from the app's own server (not an error or a log-in page)
 const keep = (req, r) => { if (good(r)) { const c = r.clone(); caches.open(CACHE).then(x => x.put(req, c)); } return r; };

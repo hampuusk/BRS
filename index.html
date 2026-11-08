@@ -32,6 +32,7 @@ html {
   --tag-deep: #9a3412;
   --tag-ink: #ffffff;
   --tag-soft: #fdebdd;
+  --brand: #c2410c; /* the drawing's markers and the kind Inventering: orange whatever the app's colour */
   --ok: #2f7d55;
   --danger: #b3261e;
   --plan-bg: #e9ece9;
@@ -61,6 +62,7 @@ html {
     --tag-deep: #ff7a33;
     --tag-ink: #1a0d06;
     --tag-soft: #3b2416;
+    --brand: #ff7a33;
     --ok: #5fc08e;
     --danger: #ff8a80;
     --plan-bg: #0e1110;
@@ -77,6 +79,7 @@ html {
   --tag-deep: #ff7a33;
   --tag-ink: #1a0d06;
   --tag-soft: #3b2416;
+  --brand: #ff7a33;
   --ok: #5fc08e;
   --danger: #ff8a80;
   --plan-bg: #0e1110;
@@ -211,19 +214,22 @@ label:focus-within {
 
 /* Projects (home page) */
 :root {
-  --k-inv: var(--tag);
+  --k-inv: var(--brand);
   --k-ctl: #2f7d55;
-  --k-notes: #3b6ea5;
+  --blue: #3b6ea5;
+  --chk: #0f766e;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --k-ctl: #5fc08e;
-    --k-notes: #7fa9dc;
+    --blue: #7fa9dc;
+    --chk: #2dd4bf;
   }
 }
 :root[data-theme="dark"] {
   --k-ctl: #5fc08e;
-  --k-notes: #7fa9dc;
+  --blue: #7fa9dc;
+  --chk: #2dd4bf;
 }
 .home .bar {
   gap: 8px;
@@ -649,7 +655,7 @@ label:focus-within {
   top: 0;
   bottom: 0;
   width: 1.5px;
-  background: color-mix(in srgb, var(--k-notes) 45%, transparent);
+  background: color-mix(in srgb, var(--blue) 45%, transparent);
 }
 .pbody {
   min-width: 0;
@@ -697,10 +703,6 @@ label:focus-within {
 .k-ctl.kdot {
   --k-inv: var(--k-ctl);
 }
-.k-notes.kchip,
-.k-notes.kdot {
-  --k-inv: var(--k-notes);
-}
 .count {
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
@@ -747,7 +749,7 @@ label:focus-within {
   flex-wrap: wrap;
 }
 .backups .btn {
-  flex: 1 1 160px;
+  flex: 1 1 200px; /* on a phone each button has its own row ("Säkerhetskopiera alla" never breaks); side by side on a tablet */
   padding: 10px 14px;
   font-size: var(--fs-b);
 }
@@ -853,7 +855,7 @@ label:focus-within {
   -webkit-text-size-adjust: none;
   text-size-adjust: none;
   color: #fff;
-  background: var(--mc, var(--tag));
+  background: var(--mc, var(--brand));
   min-width: 28px;
   height: 28px;
   padding: 0 6px;
@@ -867,6 +869,77 @@ label:focus-within {
 .mk.pending i {
   outline: 2px dashed var(--ink);
   outline-offset: 2px;
+}
+/* a checkpoint (Checklista) not yet an object: a white square tag with a dashed teal edge and a check mark; ticked: teal */
+.mk.chk i {
+  background: #fff;
+  color: var(--chk);
+  border: 2px dashed var(--chk);
+  border-radius: 7px;
+  min-width: 28px;
+  padding: 0;
+  font-size: 15px;
+}
+.mk.chk.done i {
+  background: var(--chk);
+  color: #fff;
+  border-style: solid;
+}
+.chkbanner {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 2px dashed var(--chk);
+  border-radius: 10px;
+  color: var(--ink);
+}
+.chkbanner small {
+  color: var(--chk);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+}
+.chklist {
+  display: grid;
+  gap: 6px;
+}
+.chkrow {
+  display: flex;
+  flex-wrap: wrap; /* on a narrow screen the buttons take a row of their own, so a long word is never broken */
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.chkrow .check {
+  flex: 1 1 200px; /* less than that for the text (a long compound word) and the buttons move down */
+  min-width: 0;
+}
+.chkrow .check span {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.chkrow.done .check span {
+  color: var(--muted);
+}
+.chkbtns {
+  display: flex;
+  gap: 6px;
+  flex: none;
+  margin-left: auto; /* to the right, also when on a row of their own */
+}
+.chkbtns .sbtn {
+  white-space: nowrap;
+}
+.chkadd {
+  display: flex;
+  gap: 8px;
+}
+.chkadd input {
+  flex: 1;
+  min-width: 0;
 }
 /* between number and dot the marker glides: the badge shrinks and its number fades (scale is its own property, so
    it never lags behind the zoom; not with Animerade övergångar off, or less motion on the phone) */
@@ -985,7 +1058,10 @@ label:focus-within {
 }
 .shead h2 {
   margin: 0;
-  font-size: var(--fs-xl);
+  font-size: min(
+    var(--fs-xl),
+    7.4vw
+  ); /* with big text on a narrow screen the heading shrinks a little rather than wraps ("Uppdragsinställningar") */
   flex: 1;
 }
 .photo {
@@ -1378,6 +1454,13 @@ textarea {
 .vp.lifting .mk.move i {
   filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.35));
 }
+.mk.chk.lifting {
+  z-index: 4;
+}
+.mk.chk.lifting i {
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.35));
+  scale: 1.15;
+}
 .fbar {
   display: grid;
   gap: 8px;
@@ -1446,7 +1529,7 @@ textarea {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  border: 3px solid var(--mc, var(--tag));
+  border: 3px solid var(--mc, var(--brand));
   transform: scale(var(--inv, 1));
   pointer-events: none;
 }
@@ -1761,57 +1844,8 @@ textarea {
   color: var(--muted);
   font-size: var(--fs-s);
 }
-.stage.moveon .mk.placing i {
-  opacity: 1;
-}
-.mk.placing i {
-  box-shadow:
-    0 0 0 3px var(--ink),
-    0 2px 6px rgba(0, 0, 0, 0.35);
-}
-.plc {
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  font-weight: 600;
-  white-space: nowrap;
-}
 .movebar .sbtn.danger {
   color: var(--danger);
-}
-.subs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.subchip {
-  border: 1.5px solid var(--cc);
-  background: transparent;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  font-size: var(--fs-s);
-  color: var(--ink);
-}
-.subchip small {
-  font-family: var(--font-ui);
-  color: var(--muted);
-  font-weight: 500;
-}
-.inherit {
-  display: grid;
-  gap: 6px;
-  justify-items: start;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 10px 12px;
-}
-.inherit p {
-  margin: 0;
-  line-height: var(--lh);
 }
 .mk i {
   white-space: nowrap;
@@ -1848,14 +1882,6 @@ textarea {
 .prio .muted {
   margin-left: 4px;
 }
-.field2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.field2 > .field {
-  min-width: 0;
-}
 input[type="date"] {
   width: 100%;
   font: inherit;
@@ -1866,11 +1892,6 @@ input[type="date"] {
   border-radius: var(--r);
   padding: 11px 12px;
   min-height: 46px;
-}
-@media (max-width: 360px) {
-  .field2 {
-    grid-template-columns: 1fr;
-  }
 }
 @media (max-width: 380px) {
   .hint {
@@ -1969,6 +1990,13 @@ img.tload,
 .field label.check {
   font-size: var(--fs-b);
   font-weight: 600;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* a file button (a label for the hidden file input, e.g. Ta emot fil under Samarbeta) inside a field is a button, not a field label */
+.field label.btn {
+  font-size: var(--fs-b);
   color: var(--ink);
   text-transform: none;
   letter-spacing: 0;
@@ -3052,9 +3080,30 @@ select {
   padding: 0 0 4px;
   font-size: var(--fs-b);
 }
-.shead:has(.mback) {
+/* A stacked head: the way back (or the assignment's kind) on a line of its own above or below the heading */
+.shead.stack {
   display: grid;
   gap: 2px;
+}
+.shead .hrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.shead .hrow h2 {
+  flex: 1;
+}
+.kindline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--fs-s);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.kindline .kdot {
+  flex: none;
 }
 .hint.gone {
   opacity: 0;
@@ -3067,6 +3116,11 @@ select {
 }
 .pmrow > #pmdel {
   border-color: var(--danger);
+}
+/* a pair with long labels (Säkerhetskopiera / Radera uppdraget): on a narrow phone each takes a row of its own instead
+   of breaking a word */
+.pmrow.long > .btn {
+  flex-basis: 155px; /* side by side from about 360 px; below that each word would break */
 }
 /* A button alone on its row takes the whole width */
 .btn.wide {
@@ -3146,6 +3200,25 @@ a.btn {
 .apponly > * {
   opacity: 0.45;
   filter: grayscale(0.4);
+}
+/* a row in a menu list that only the app has: the whole row, dimmed, with the badge where the chevron would be */
+.mlist > .apponly {
+  display: grid;
+}
+.mlist > .apponly > .mrow {
+  border-bottom: 1px solid var(--line);
+  padding-right: 124px;
+}
+.mlist > .apponly > .mrow i {
+  display: none;
+}
+.mlist > .apponly:last-child > .mrow {
+  border-bottom: 0;
+}
+.mlist > .apponly::after {
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
 }
 .apponly::after {
   content: "Endast i appen";
@@ -3507,13 +3580,133 @@ a.btn {
     left: 50%;
   }
 }
+/* Inställningar → Logga: the logo on a white "page" strip, placed as it will be in the header */
+.logobox {
+  display: flex;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: 64px;
+  align-items: center;
+}
+.logobox.logo-center {
+  justify-content: center;
+}
+.logobox.logo-right {
+  justify-content: flex-end;
+}
+.logobox img {
+  max-height: 44px;
+  max-width: 60%;
+  object-fit: contain;
+}
+.logobtns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* ---------- Samarbeta ---------- */
+.qrbox {
+  display: grid;
+  justify-content: center;
+  padding: 12px;
+  background: #fff;
+  border-radius: var(--r);
+}
+.qrbox canvas {
+  width: 212px;
+  height: 212px;
+  image-rendering: pixelated;
+}
+.collcode {
+  margin: 0;
+  text-align: center;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: min(
+    var(--fs-l),
+    calc((100vw - 64px) / 12.6)
+  ); /* the 19 characters always on one line, also with big text */
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  user-select: all;
+}
+.members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.members li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.members small {
+  color: var(--muted);
+}
+/* an object changed here and not yet sent to the other phone */
+.tchip.sync {
+  color: var(--tag);
+  border-color: var(--tag);
+}
+
+/* Utseende → Färgtema: the button and the page with the colours */
+.accentbtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.accentbtn .grow {
+  flex: 1;
+}
+.accentbtn i,
+.accents .mrow i {
+  font-style: normal;
+  color: var(--muted);
+}
+.accents .mrow {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  min-height: 52px;
+}
+.accents .mrow i {
+  grid-column: 3;
+  grid-row: 1;
+}
+.accents .mrow.on i {
+  color: var(--tag);
+  font-weight: 700;
+}
+.acsw {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sw);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .acsw {
+    background: var(--sw-d);
+  }
+}
+:root[data-theme="dark"] .acsw {
+  background: var(--sw-d);
+}
 </style>
 
 </head>
 <body>
 <div class="app" id="app"></div>
 <input type="file" id="planInput" class="hidden-input" tabindex="-1" aria-hidden="true" accept="application/pdf,image/*">
-<input type="file" id="backupInput" class="hidden-input" tabindex="-1" aria-hidden="true" accept=".zip,.json,.planpin,.brs,application/zip,application/json,application/octet-stream">
+<input type="file" id="backupInput" class="hidden-input" tabindex="-1" aria-hidden="true" accept=".zip,.planpin,application/zip,application/octet-stream">
 
 <script src="app.js"></script>
 </body>
